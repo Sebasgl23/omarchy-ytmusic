@@ -7,13 +7,13 @@ import "ytmusic.js" as Utils
 
 BarWidget {
   id: root
-  moduleName: "sguardol.ytmusic"
+  moduleName: "sebasgl23.ytmusic"
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   // CLI Binary
-  property string cliBin: Quickshell.env("HOME") + "/.config/omarchy/plugins/sguardol.ytmusic/bin/omarchy-ytmusic"
+  property string cliBin: Quickshell.env("HOME") + "/.config/omarchy/plugins/sebasgl23.ytmusic/bin/omarchy-ytmusic"
 
   // Current State
   property var playerState: ({

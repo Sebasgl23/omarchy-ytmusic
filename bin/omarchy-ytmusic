@@ -8,12 +8,16 @@ while [ -h "$SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
-VENV_DIR="$PLUGIN_DIR/daemon/venv"
+
+# Store isolated venv in ~/.local/state/omarchy-ytmusic/venv to comply with Omarchy plugin validation (no symlinks inside plugin dir)
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-ytmusic"
+VENV_DIR="$STATE_DIR/venv"
 VENV_PYTHON="$VENV_DIR/bin/python3"
 
 # Auto-bootstrap python virtual environment on first run if missing or incomplete
 if [ ! -f "$VENV_PYTHON" ] || ! "$VENV_PYTHON" -c "import ytmusicapi, yt_dlp, requests" >/dev/null 2>&1; then
   echo "Setting up YouTube Music daemon environment for first run..." >&2
+  mkdir -p "$STATE_DIR"
   if [ ! -f "$VENV_PYTHON" ]; then
     python3 -m venv "$VENV_DIR" || { echo "Failed to create virtualenv. Please install python3-venv." >&2; exit 1; }
   fi

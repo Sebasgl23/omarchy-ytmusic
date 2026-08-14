@@ -59,7 +59,7 @@ def start_daemon():
         return
 
     daemon_dir = os.path.dirname(os.path.abspath(__file__))
-    venv_python = os.path.join(daemon_dir, "venv", "bin", "python3")
+    venv_python = sys.executable
     main_py = os.path.join(daemon_dir, "main.py")
 
     print("Starting Omarchy YouTube Music Daemon in background...")
