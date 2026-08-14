@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Symlink-safe path resolver
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
+VENV_DIR="$PLUGIN_DIR/daemon/venv"
+VENV_PYTHON="$VENV_DIR/bin/python3"
+
+# Auto-bootstrap python virtual environment on first run if missing
+if [ ! -f "$VENV_PYTHON" ]; then
+  echo "Setting up YouTube Music daemon environment for first run..." >&2
+  python3 -m venv "$VENV_DIR" || { echo "Failed to create virtualenv. Please install python3-venv." >&2; exit 1; }
+  "$VENV_DIR/bin/pip" install --quiet ytmusicapi yt-dlp requests || { echo "Failed to install dependencies." >&2; exit 1; }
+  echo "Setup completed successfully." >&2
+fi
+
+exec "$VENV_PYTHON" "$PLUGIN_DIR/daemon/cli.py" "$@"

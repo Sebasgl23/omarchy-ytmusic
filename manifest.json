@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "sebasgl23.ytmusic",
+  "name": "YouTube Music",
+  "version": "0.1.0",
+  "author": "sebasgl23",
+  "license": "MIT",
+  "description": "Lightweight theme-aware YouTube Music player and bar widget for Omarchy.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "YouTube Music",
+    "description": "Ultra-lightweight YouTube Music player, search engine, and playlist manager.",
+    "category": "Media",
+    "allowMultiple": false
+  }
+}
