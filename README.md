@@ -36,13 +36,39 @@ A native, ultra-lightweight **YouTube Music** player and bar widget built specif
 
 ## Installation
 
-Install and enable the plugin directly using Omarchy's built-in package manager:
+Install and enable the plugin directly using Omarchy's built-in plugin manager:
 
 ```bash
-omarchy plugin add https://github.com/your-username/omarchy-ytmusic.git --enable
+omarchy plugin add https://github.com/Sebasgl23/omarchy-ytmusic.git --enable
 ```
 
-> **Note:** On first launch, the plugin automatically bootstraps its isolated Python virtual environment and downloads the required lightweight dependencies (`ytmusicapi`, `yt-dlp`, `requests`). No manual `pip` installation is needed!
+Optionally, add the widget to your bar's right section:
+```bash
+omarchy bar move sebasgl23.ytmusic --section right
+```
+
+> **Note:** On first launch, the plugin automatically bootstraps its isolated Python virtual environment inside `~/.local/state/omarchy-ytmusic/venv/` and sets up the required dependencies (`ytmusicapi`, `yt-dlp`, `requests`). No manual `pip` installation or root privileges required!
+
+### Updating the Plugin
+
+To update to the latest release at any time:
+
+```bash
+omarchy plugin update sebasgl23.ytmusic
+```
+
+### Removing / Uninstalling
+
+To remove the plugin from Omarchy:
+
+```bash
+omarchy plugin remove sebasgl23.ytmusic
+```
+
+To also clean up the isolated dependency cache and temporary files:
+```bash
+rm -rf ~/.local/state/omarchy-ytmusic
+```
 
 ---
 
