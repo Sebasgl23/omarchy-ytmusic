@@ -14,6 +14,14 @@ LOG_FILE = "/tmp/omarchy-ytmusic.log"
 
 
 def send_ipc(command: str, args: dict = None, timeout: float = 15.0) -> dict:
+    if not os.path.exists(SOCKET_PATH) or not is_running():
+        # Auto-spawn daemon if not already started (e.g. after fresh PC reboot)
+        start_daemon(silent=True)
+        for _ in range(30):
+            if os.path.exists(SOCKET_PATH):
+                break
+            time.sleep(0.1)
+
     if not os.path.exists(SOCKET_PATH):
         return {"status": "error", "error": "Daemon is not running. Start with 'omarchy-ytmusic start'"}
 
@@ -53,16 +61,18 @@ def is_running() -> bool:
     return False
 
 
-def start_daemon():
+def start_daemon(silent: bool = False):
     if is_running():
-        print("Daemon is already running.")
+        if not silent:
+            print("Daemon is already running.")
         return
 
     daemon_dir = os.path.dirname(os.path.abspath(__file__))
     venv_python = sys.executable
     main_py = os.path.join(daemon_dir, "main.py")
 
-    print("Starting Omarchy YouTube Music Daemon in background...")
+    if not silent:
+        print("Starting Omarchy YouTube Music Daemon in background...")
     with open(LOG_FILE, "a") as log_f:
         proc = subprocess.Popen(
             [venv_python, main_py],
@@ -76,11 +86,13 @@ def start_daemon():
 
     for _ in range(30):
         if os.path.exists(SOCKET_PATH):
-            print(f"Daemon started successfully (PID {proc.pid}).")
+            if not silent:
+                print(f"Daemon started successfully (PID {proc.pid}).")
             return
         time.sleep(0.1)
 
-    print(f"Daemon process started (PID {proc.pid}), waiting for socket... check {LOG_FILE}")
+    if not silent:
+        print(f"Daemon process started (PID {proc.pid}), waiting for socket... check {LOG_FILE}")
 
 
 def stop_daemon():
