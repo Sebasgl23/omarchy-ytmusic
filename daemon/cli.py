@@ -124,28 +124,52 @@ def setup_auth():
         print("=" * 64 + "\n")
         client_id = input("Enter your Google Client ID: ").strip()
         client_secret = input("Enter your Google Client Secret: ").strip()
-        print("\nFollow the interactive verification code below:\n")
-        cmd = [ytmusicapi_bin, "oauth", "--file", auth_file]
-        if client_id and client_secret:
-            cmd += ["--client-id", client_id, "--client-secret", client_secret]
-        ret = subprocess.run(cmd)
-        if os.path.exists(auth_file):
-            try:
-                with open(auth_file, "r") as f:
-                    data = json.load(f)
+        
+        try:
+            from ytmusicapi.auth.oauth import OAuthCredentials
+            
+            oauth_handler = OAuthCredentials(client_id=client_id, client_secret=client_secret)
+            code_data = oauth_handler.get_code()
+            
+            verification_url = code_data.get("verification_url", "https://www.google.com/device")
+            user_code = code_data.get("user_code", "")
+            device_code = code_data.get("device_code", "")
+            
+            print("\n" + "=" * 64)
+            print(f" 1. Open in your browser:  \033[1;34m{verification_url}\033[0m")
+            print(f" 2. Enter this code:       \033[1;32m{user_code}\033[0m")
+            print(f" 3. Click 'Allow' / 'Accept' on your Google account.")
+            print("=" * 64)
+            input("\nPress [ENTER] once you have approved the access in your browser...")
+            
+            token_data = oauth_handler.token_from_code(device_code)
+            
+            if token_data and "access_token" in token_data and "refresh_token" in token_data:
+                token_dict = dict(token_data)
+                token_dict["expires_at"] = int(time.time()) + int(token_dict.get("expires_in", 3600))
                 if client_id and client_secret:
-                    data["client_id"] = client_id
-                    data["client_secret"] = client_secret
-                    with open(auth_file, "w") as f:
-                        json.dump(data, f, indent=2)
-            except Exception:
-                pass
-            print(f"\n[OK] Authentication successful! Saved to: {auth_file}")
-            print("Restarting daemon to apply your credentials...")
-            stop_daemon()
-            start_daemon()
-        else:
-            print("\n[FAILED] OAuth setup was not completed or failed.")
+                    token_dict["client_id"] = client_id
+                    token_dict["client_secret"] = client_secret
+                
+                with open(auth_file, "w") as f:
+                    json.dump(token_dict, f, indent=2)
+                
+                # Protect file permissions
+                try:
+                    os.chmod(auth_file, 0o600)
+                except Exception:
+                    pass
+                
+                print(f"\n[OK] Authentication successful! Saved to: {auth_file}")
+                print("Restarting daemon to apply your credentials...")
+                stop_daemon()
+                start_daemon()
+            else:
+                err_msg = token_data.get("error_description") if isinstance(token_data, dict) else "Unknown"
+                print(f"\n[FAILED] Authorization was not completed in time or failed ({err_msg}).")
+                print("Please make sure you approved the code in your browser before pressing Enter.")
+        except Exception as ex:
+            print(f"\n[FAILED] OAuth error: {ex}")
             
     elif choice == "2":
         if os.path.exists(auth_file):
