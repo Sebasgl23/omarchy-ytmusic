@@ -63,7 +63,12 @@ class IpcServer:
             except OSError:
                 pass
 
-        self._server = await asyncio.start_unix_server(self._handle_client, path=self.socket_path)
+        # Mitigate local DoS: limit incoming request size to 512KB
+        self._server = await asyncio.start_unix_server(
+            self._handle_client, 
+            path=self.socket_path, 
+            limit=1024 * 512
+        )
         # Ensure strict private socket permissions (owner only)
         try:
             os.chmod(self.socket_path, 0o600)
