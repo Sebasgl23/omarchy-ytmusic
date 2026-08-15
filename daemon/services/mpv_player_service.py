@@ -61,6 +61,11 @@ class MpvPlayerService(AudioPlayer):
         plugin_cookie = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "cookies.txt")
         active_cookie = COOKIE_FILE if os.path.exists(COOKIE_FILE) else (plugin_cookie if os.path.exists(plugin_cookie) else None)
         if active_cookie:
+            # Proactively secure credentials file if created manually
+            try:
+                os.chmod(active_cookie, 0o600)
+            except Exception:
+                pass
             mpv_cmd.append(f"--cookies-file={active_cookie}")
 
         logger.info("Starting headless MPV process: %s", " ".join(mpv_cmd))

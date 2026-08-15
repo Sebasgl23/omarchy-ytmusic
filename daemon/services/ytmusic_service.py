@@ -47,6 +47,13 @@ class YtMusicService(MusicRepository):
         """Load OAuth tokens and credentials if available."""
         if not self.auth_file_path or not os.path.exists(self.auth_file_path):
             return
+        
+        # Proactively secure credentials file if created manually with default permissions
+        try:
+            os.chmod(self.auth_file_path, 0o600)
+        except Exception:
+            pass
+            
         try:
             with open(self.auth_file_path, "r") as f:
                 data = json.load(f)
