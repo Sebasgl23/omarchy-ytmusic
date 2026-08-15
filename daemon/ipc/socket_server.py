@@ -163,7 +163,10 @@ class IpcServer:
 
     async def _handle_play_playlist(self, args: dict) -> bool:
         playlist_id = args.get("playlist_id", "")
-        start_index = int(args.get("start_index", 0))
+        try:
+            start_index = int(args.get("start_index", 0))
+        except (ValueError, TypeError):
+            start_index = 0
         tracks = await self.repo.get_playlist_tracks(playlist_id)
         if tracks:
             return await self.orchestrator.play_queue(tracks, start_index=start_index)
@@ -195,12 +198,18 @@ class IpcServer:
         return await self.orchestrator.previous_track()
 
     async def _handle_seek(self, args: dict) -> float:
-        seconds = max(0.0, float(args.get("seconds", 0.0)))
+        try:
+            seconds = max(0.0, float(args.get("seconds", 0.0)))
+        except (ValueError, TypeError):
+            seconds = 0.0
         await self.player.seek(seconds)
         return seconds
 
     async def _handle_set_volume(self, args: dict) -> int:
-        volume = max(0, min(100, int(args.get("volume", 100))))
+        try:
+            volume = max(0, min(100, int(args.get("volume", 100))))
+        except (ValueError, TypeError):
+            volume = 100
         await self.player.set_volume(volume)
         return volume
 
@@ -228,11 +237,17 @@ class IpcServer:
         return [t.to_dict() for t in self.orchestrator.queue]
 
     async def _handle_play_index(self, args: dict) -> bool:
-        index = int(args.get("index", 0))
+        try:
+            index = int(args.get("index", 0))
+        except (ValueError, TypeError):
+            return False
         return await self.orchestrator.play_index(index)
 
     async def _handle_remove_from_queue(self, args: dict) -> bool:
-        index = int(args.get("index", 0))
+        try:
+            index = int(args.get("index", 0))
+        except (ValueError, TypeError):
+            return False
         return await self.orchestrator.remove_from_queue(index)
 
     async def _handle_clear_queue(self, args: dict) -> bool:
