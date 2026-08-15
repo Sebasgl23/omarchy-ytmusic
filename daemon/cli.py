@@ -50,7 +50,7 @@ def send_ipc(command: str, args: dict = None, timeout: float = 15.0) -> dict:
 
 
 def is_ytmusic_daemon_process(pid: int) -> bool:
-    """Verify that the given PID exists and genuinely belongs to the YouTube Music daemon."""
+    """Verify that the given PID exists and genuinely belongs to this YouTube Music daemon instance."""
     if pid <= 0:
         return False
     try:
@@ -60,19 +60,34 @@ def is_ytmusic_daemon_process(pid: int) -> bool:
 
     # Inspect /proc/<pid>/cmdline on Linux to guarantee process ownership
     cmdline_path = f"/proc/{pid}/cmdline"
-    if os.path.exists(cmdline_path):
-        try:
-            with open(cmdline_path, "rb") as f:
-                cmdline = f.read().decode("utf-8", errors="ignore")
-                # Ensure the command line matches the ytmusic daemon entrypoint
-                if any(sig in cmdline for sig in ("daemon/main.py", "sebasgl23.ytmusic", "omarchy-ytmusic")):
-                    return True
-                return False
-        except (OSError, PermissionError):
+    if not os.path.exists(cmdline_path):
+        # Fail-closed: cannot verify process identity without /proc/<pid>/cmdline
+        return False
+
+    try:
+        with open(cmdline_path, "rb") as f:
+            raw_cmdline = f.read()
+
+        # In Linux /proc/<pid>/cmdline, arguments are separated by null bytes (\x00)
+        args = [arg.decode("utf-8", errors="ignore") for arg in raw_cmdline.split(b"\x00") if arg]
+        if not args:
             return False
 
-    # Fallback if /proc is not mounted
-    return True
+        # Compute the canonical absolute path to our daemon entrypoint (daemon/main.py)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        expected_main = os.path.realpath(os.path.join(current_dir, "main.py"))
+
+        for arg in args:
+            try:
+                if os.path.realpath(arg) == expected_main:
+                    return True
+            except Exception:
+                continue
+
+        return False
+    except (OSError, PermissionError):
+        # Fail-closed if unable to read process details
+        return False
 
 
 def is_running() -> bool:

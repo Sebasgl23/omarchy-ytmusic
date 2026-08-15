@@ -208,8 +208,11 @@ class TestProcessVerificationAndStalePidSecurity(unittest.TestCase):
     """Test PID reuse protection and process verification in cli.py."""
 
     def test_is_ytmusic_daemon_process_unrelated_process(self):
+        import os
         from cli import is_ytmusic_daemon_process
         from unittest.mock import patch, mock_open
+
+        daemon_main = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "daemon", "main.py"))
 
         # Case 1: Process does not exist
         with patch("os.kill", side_effect=ProcessLookupError):
@@ -221,11 +224,22 @@ class TestProcessVerificationAndStalePidSecurity(unittest.TestCase):
              patch("builtins.open", mock_open(read_data=b"/usr/bin/firefox\x00")):
             self.assertFalse(is_ytmusic_daemon_process(12345))
 
-        # Case 3: Process exists and cmdline matches ytmusic daemon
+        # Case 3: Process exists and cmdline matches ytmusic daemon exact canonical entrypoint
         with patch("os.kill", return_value=None), \
              patch("os.path.exists", return_value=True), \
-             patch("builtins.open", mock_open(read_data=b"python3\x00/path/to/daemon/main.py\x00")):
+             patch("builtins.open", mock_open(read_data=f"python3\x00{daemon_main}\x00".encode("utf-8"))):
             self.assertTrue(is_ytmusic_daemon_process(12345))
+
+        # Case 4: Process exists but cmdline only contains substring (e.g. nano /other/daemon/main.py or grep)
+        with patch("os.kill", return_value=None), \
+             patch("os.path.exists", return_value=True), \
+             patch("builtins.open", mock_open(read_data=b"nano\x00/other/project/daemon/main.py\x00sebasgl23.ytmusic\x00")):
+            self.assertFalse(is_ytmusic_daemon_process(12345))
+
+        # Case 5: Fail-closed when /proc/<pid>/cmdline does not exist
+        with patch("os.kill", return_value=None), \
+             patch("os.path.exists", return_value=False):
+            self.assertFalse(is_ytmusic_daemon_process(12345))
 
     def test_stop_daemon_does_not_kill_unrelated_reused_pid(self):
         from cli import stop_daemon
