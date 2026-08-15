@@ -128,7 +128,7 @@ class YtMusicService(MusicRepository):
                     artists = ", ".join(a.get("name", "") for a in item.get("artists", [])) or "Unknown Artist"
                     album = item.get("album", {}).get("name", "") if item.get("album") else ""
                     duration_sec = int(item.get("duration_seconds", 0) or 0)
-                    thumbnails = item.get("thumbnails", [])
+                    thumbnails = item.get("thumbnails") or item.get("thumbnail") or []
                     thumb_url = thumbnails[-1].get("url", "") if thumbnails else ""
                     tracks.append(
                         Track(
@@ -230,7 +230,7 @@ class YtMusicService(MusicRepository):
                             title = item.get("title", "")
                             if not title:
                                 continue
-                            thumbnails = item.get("thumbnails", [])
+                            thumbnails = item.get("thumbnails") or item.get("thumbnail") or []
                             thumb_url = thumbnails[-1].get("url", "") if thumbnails else ""
                             playlists.append(Playlist(
                                 playlist_id=playlist_id, title=title,
@@ -326,7 +326,7 @@ class YtMusicService(MusicRepository):
                     artists = ", ".join(a.get("name", "") for a in item.get("artists", [])) or "Unknown Artist"
                     album = item.get("album", {}).get("name", "") if item.get("album") else ""
                     duration_sec = int(item.get("duration_seconds", 0) or 0)
-                    thumbnails = item.get("thumbnails", [])
+                    thumbnails = item.get("thumbnails") or item.get("thumbnail") or []
                     thumb_url = thumbnails[-1].get("url", "") if thumbnails else ""
                     tracks.append(
                         Track(
@@ -359,7 +359,7 @@ class YtMusicService(MusicRepository):
                     artists = ", ".join(a.get("name", "") for a in item.get("artists", [])) or "Unknown Artist"
                     album = item.get("album", {}).get("name", "") if item.get("album") else ""
                     duration_sec = int(item.get("duration_seconds", 0) or 0)
-                    thumbnails = item.get("thumbnails", [])
+                    thumbnails = item.get("thumbnails") or item.get("thumbnail") or []
                     thumb_url = thumbnails[-1].get("url", "") if thumbnails else ""
                     tracks.append(
                         Track(
