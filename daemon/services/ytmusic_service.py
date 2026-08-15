@@ -295,7 +295,10 @@ class YtMusicService(MusicRepository):
                             if not vid:
                                 continue
                             thumbs = snip.get("thumbnails", {})
-                            thumb_url = (thumbs.get("high") or thumbs.get("medium") or thumbs.get("default") or {}).get("url", "")
+                            # Prefer 'maxres' (16:9) or 'medium' (16:9) over 'high' (4:3) 
+                            # because 4:3 thumbnails have baked-in black bars that ruin 1:1 UI crops.
+                            thumb_node = thumbs.get("maxres") or thumbs.get("medium") or thumbs.get("high") or thumbs.get("default") or {}
+                            thumb_url = thumb_node.get("url", "")
                             title = snip.get("title", "Unknown Title")
                             artist_raw = snip.get("videoOwnerChannelTitle") or snip.get("channelTitle", "Unknown Artist")
                             # Clean up '- Topic' from YouTube Music channel names
