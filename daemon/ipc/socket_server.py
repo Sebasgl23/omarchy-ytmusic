@@ -16,11 +16,12 @@ logger = logging.getLogger("socket_server")
 class IpcServer:
     """Provides non-blocking JSON-RPC interface over Unix domain socket."""
 
-    def __init__(self, repo: MusicRepository, player: AudioPlayer, orchestrator: PlaybackOrchestrator, socket_path: str = SOCKET_PATH):
+    def __init__(self, repo: MusicRepository, player: AudioPlayer, orchestrator: PlaybackOrchestrator, socket_path: str = SOCKET_PATH, on_shutdown: Optional[Callable[[], Any]] = None):
         self.repo = repo
         self.player = player
         self.orchestrator = orchestrator
         self.socket_path = socket_path
+        self.on_shutdown = on_shutdown
         self._server: Optional[asyncio.Server] = None
         self._handlers: Dict[str, Callable[[Dict[str, Any]], Coroutine[Any, Any, Any]]] = {}
         self._register_handlers()
@@ -28,6 +29,7 @@ class IpcServer:
     def _register_handlers(self) -> None:
         self._handlers = {
             "ping": self._handle_ping,
+            "shutdown": self._handle_shutdown,
             "get_state": self._handle_get_state,
             "search": self._handle_search,
             "get_playlists": self._handle_get_playlists,
@@ -126,6 +128,11 @@ class IpcServer:
 
     async def _handle_ping(self, args: dict) -> dict:
         return {"pong": True}
+
+    async def _handle_shutdown(self, args: dict) -> dict:
+        if self.on_shutdown:
+            asyncio.get_running_loop().call_soon(self.on_shutdown)
+        return {"shutdown": True}
 
     async def _handle_get_state(self, args: dict) -> dict:
         return self.orchestrator.get_state().to_dict()

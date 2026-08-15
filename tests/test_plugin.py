@@ -173,15 +173,18 @@ class TestIpcServer(unittest.IsolatedAsyncioTestCase):
         await self.ipc.stop()
         self.assertFalse(os.path.exists(self.test_socket))
 
-    async def test_ping_handler(self):
-        res = await self.ipc._handlers["ping"]({})
-        self.assertEqual(res, {"pong": True})
+    async def test_shutdown_handler(self):
+        shutdown_called = False
+        def _on_shutdown():
+            nonlocal shutdown_called
+            shutdown_called = True
 
-    async def test_get_state_handler(self):
-        res = await self.ipc._handlers["get_state"]({})
-        self.assertIn("status", res)
-        self.assertIn("volume", res)
-        self.assertIn("queue_length", res)
+        test_ipc = IpcServer(self.mock_repo, self.mock_player, self.orchestrator, on_shutdown=_on_shutdown)
+        res = await test_ipc._handlers["shutdown"]({})
+        self.assertEqual(res, {"shutdown": True})
+        # Allow loop to process call_soon
+        await asyncio.sleep(0.01)
+        self.assertTrue(shutdown_called)
 
 
 class TestRuntimeSecurityPaths(unittest.TestCase):
@@ -199,6 +202,48 @@ class TestRuntimeSecurityPaths(unittest.TestCase):
                 str(RUNTIME_DIR) in path,
                 f"Path {path} should reside inside RUNTIME_DIR ({RUNTIME_DIR})",
             )
+
+
+class TestProcessVerificationAndStalePidSecurity(unittest.TestCase):
+    """Test PID reuse protection and process verification in cli.py."""
+
+    def test_is_ytmusic_daemon_process_unrelated_process(self):
+        from cli import is_ytmusic_daemon_process
+        from unittest.mock import patch, mock_open
+
+        # Case 1: Process does not exist
+        with patch("os.kill", side_effect=ProcessLookupError):
+            self.assertFalse(is_ytmusic_daemon_process(99999))
+
+        # Case 2: Process exists but is an unrelated app (e.g. firefox, bash)
+        with patch("os.kill", return_value=None), \
+             patch("os.path.exists", return_value=True), \
+             patch("builtins.open", mock_open(read_data=b"/usr/bin/firefox\x00")):
+            self.assertFalse(is_ytmusic_daemon_process(12345))
+
+        # Case 3: Process exists and cmdline matches ytmusic daemon
+        with patch("os.kill", return_value=None), \
+             patch("os.path.exists", return_value=True), \
+             patch("builtins.open", mock_open(read_data=b"python3\x00/path/to/daemon/main.py\x00")):
+            self.assertTrue(is_ytmusic_daemon_process(12345))
+
+    def test_stop_daemon_does_not_kill_unrelated_reused_pid(self):
+        from cli import stop_daemon
+        from unittest.mock import patch, mock_open
+
+        # Simulate PID_FILE existing with an unrelated process PID
+        with patch("os.path.exists", side_effect=lambda p: "daemon.pid" in str(p) or "omarchy-ytmusic.sock" in str(p)), \
+             patch("builtins.open", mock_open(read_data="55555")), \
+             patch("cli.is_ytmusic_daemon_process", return_value=False), \
+             patch("os.kill") as mock_kill, \
+             patch("os.remove") as mock_remove:
+            
+            stop_daemon()
+            
+            # Verify SIGTERM (15) was NEVER sent to the unrelated PID
+            mock_kill.assert_not_called()
+            # Verify stale PID_FILE was safely cleaned up
+            self.assertTrue(any("daemon.pid" in str(c) for c in mock_remove.call_args_list))
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from services.ytmusic_service import YtMusicService
 from services.mpv_player_service import MpvPlayerService
 from services.playback_orchestrator import PlaybackOrchestrator
 from ipc.socket_server import IpcServer
+from core.paths import PID_FILE
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,32 +33,39 @@ async def main():
     repo = YtMusicService(auth_file_path=auth_file if os.path.exists(auth_file) else None)
     player = MpvPlayerService()
     orchestrator = PlaybackOrchestrator(repo, player)
-    ipc = IpcServer(repo, player, orchestrator)
+
+    stop_event = asyncio.Event()
+
+    def _shutdown_handler():
+        logger.info("Shutdown requested.")
+        stop_event.set()
+
+    ipc = IpcServer(repo, player, orchestrator, on_shutdown=_shutdown_handler)
 
     # Start services
     await player.start()
     await ipc.start()
 
-    stop_event = asyncio.Event()
-
-    def _signal_handler():
-        logger.info("Shutdown signal received.")
-        stop_event.set()
-
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            loop.add_signal_handler(sig, _signal_handler)
+            loop.add_signal_handler(sig, _shutdown_handler)
         except NotImplementedError:
             pass
 
     logger.info("YouTube Music Daemon running successfully.")
-    await stop_event.wait()
-
-    logger.info("Stopping services...")
-    await ipc.stop()
-    await player.stop()
-    logger.info("Daemon cleanly terminated.")
+    try:
+        await stop_event.wait()
+    finally:
+        logger.info("Stopping services...")
+        await ipc.stop()
+        await player.stop()
+        if os.path.exists(PID_FILE):
+            try:
+                os.remove(PID_FILE)
+            except OSError:
+                pass
+        logger.info("Daemon cleanly terminated.")
 
 
 if __name__ == "__main__":

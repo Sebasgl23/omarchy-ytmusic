@@ -49,13 +49,56 @@ def send_ipc(command: str, args: dict = None, timeout: float = 15.0) -> dict:
         return {"status": "error", "error": str(ex)}
 
 
+def is_ytmusic_daemon_process(pid: int) -> bool:
+    """Verify that the given PID exists and genuinely belongs to the YouTube Music daemon."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except (OSError, ProcessLookupError, PermissionError):
+        return False
+
+    # Inspect /proc/<pid>/cmdline on Linux to guarantee process ownership
+    cmdline_path = f"/proc/{pid}/cmdline"
+    if os.path.exists(cmdline_path):
+        try:
+            with open(cmdline_path, "rb") as f:
+                cmdline = f.read().decode("utf-8", errors="ignore")
+                # Ensure the command line matches the ytmusic daemon entrypoint
+                if any(sig in cmdline for sig in ("daemon/main.py", "sebasgl23.ytmusic", "omarchy-ytmusic")):
+                    return True
+                return False
+        except (OSError, PermissionError):
+            return False
+
+    # Fallback if /proc is not mounted
+    return True
+
+
 def is_running() -> bool:
     if os.path.exists(PID_FILE):
         try:
             with open(PID_FILE, "r") as f:
-                pid = int(f.read().strip())
-            os.kill(pid, 0)
-            return True
+                content = f.read().strip()
+                if not content:
+                    os.remove(PID_FILE)
+                    return False
+                pid = int(content)
+
+            if is_ytmusic_daemon_process(pid):
+                return True
+            else:
+                # Stale PID detected (process terminated or PID reused by another process)
+                try:
+                    os.remove(PID_FILE)
+                except OSError:
+                    pass
+                if os.path.exists(SOCKET_PATH):
+                    try:
+                        os.remove(SOCKET_PATH)
+                    except OSError:
+                        pass
+                return False
         except Exception:
             return False
     return False
@@ -97,17 +140,47 @@ def start_daemon(silent: bool = False):
 
 def stop_daemon():
     if os.path.exists(PID_FILE):
+        pid = None
         try:
             with open(PID_FILE, "r") as f:
-                pid = int(f.read().strip())
-            print(f"Stopping daemon (PID {pid})...")
-            os.kill(pid, 15)
+                content = f.read().strip()
+                if content:
+                    pid = int(content)
         except Exception:
-            pass
+            pid = None
+
+        if pid is not None and is_ytmusic_daemon_process(pid):
+            print(f"Stopping daemon (PID {pid})...")
+            # Attempt graceful socket shutdown first
+            if os.path.exists(SOCKET_PATH):
+                try:
+                    send_ipc("shutdown", timeout=2.0)
+                except Exception:
+                    pass
+
+            # Fallback to SIGTERM if process is still alive
+            try:
+                if is_ytmusic_daemon_process(pid):
+                    os.kill(pid, 15)
+                    for _ in range(20):
+                        if not is_ytmusic_daemon_process(pid):
+                            break
+                        time.sleep(0.1)
+            except Exception:
+                pass
+        elif pid is not None:
+            print(f"Stored PID ({pid}) does not belong to YT Music daemon (stale PID). Cleaned up safely.")
+
         if os.path.exists(PID_FILE):
-            os.remove(PID_FILE)
+            try:
+                os.remove(PID_FILE)
+            except OSError:
+                pass
         if os.path.exists(SOCKET_PATH):
-            os.remove(SOCKET_PATH)
+            try:
+                os.remove(SOCKET_PATH)
+            except OSError:
+                pass
         print("Stopped.")
     else:
         print("Daemon is not running.")
