@@ -7,11 +7,10 @@ import os
 from typing import Dict, Any, Callable, Coroutine, Optional, List
 from core.models import Track
 from core.interfaces import MusicRepository, AudioPlayer
+from core.paths import SOCKET_PATH
 from services.playback_orchestrator import PlaybackOrchestrator
 
 logger = logging.getLogger("socket_server")
-
-SOCKET_PATH = "/tmp/omarchy-ytmusic.sock"
 
 
 class IpcServer:
@@ -63,9 +62,12 @@ class IpcServer:
                 pass
 
         self._server = await asyncio.start_unix_server(self._handle_client, path=self.socket_path)
-        # Ensure correct socket permissions
-        os.chmod(self.socket_path, 0o666)
-        logger.info("IPC Socket Server listening on %s", self.socket_path)
+        # Ensure strict private socket permissions (owner only)
+        try:
+            os.chmod(self.socket_path, 0o600)
+        except Exception:
+            pass
+        logger.info("IPC Socket Server listening on %s (mode 0600)", self.socket_path)
 
     async def stop(self) -> None:
         """Close socket server."""

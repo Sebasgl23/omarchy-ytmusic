@@ -8,10 +8,9 @@ import subprocess
 from typing import Optional, Callable
 from core.models import Track, PlaybackState
 from core.interfaces import AudioPlayer
+from core.paths import MPV_SOCKET_PATH
 
 logger = logging.getLogger("mpv_player")
-
-MPV_SOCKET_PATH = "/tmp/omarchy-ytmusic-mpv.sock"
 
 
 class MpvPlayerService(AudioPlayer):

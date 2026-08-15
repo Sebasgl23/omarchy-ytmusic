@@ -8,9 +8,9 @@ import subprocess
 import sys
 import time
 
-SOCKET_PATH = "/tmp/omarchy-ytmusic.sock"
-PID_FILE = "/tmp/omarchy-ytmusic.pid"
-LOG_FILE = "/tmp/omarchy-ytmusic.log"
+# Ensure daemon directory is in sys.path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from core.paths import SOCKET_PATH, PID_FILE, LOG_FILE
 
 
 def send_ipc(command: str, args: dict = None, timeout: float = 15.0) -> dict:

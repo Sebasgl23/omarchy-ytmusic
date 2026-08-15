@@ -22,8 +22,6 @@ class YtMusicService(MusicRepository):
 
     def __init__(self, auth_file_path: Optional[str] = None):
         self.auth_file_path = auth_file_path
-        self._cookie_file = "/tmp/omarchy_ytmusic_cookies.txt"
-        self._sync_cookies_file()
         self._ytmusic = YTMusic()  # Anonymous client for search, exploration and radio
         self._stream_cache: Dict[str, tuple[str, float]] = {}  # vid -> (url, timestamp)
         self._ydl_opts = {
@@ -39,32 +37,11 @@ class YtMusicService(MusicRepository):
                 }
             },
         }
-        if os.path.exists(self._cookie_file):
-            self._ydl_opts["cookiefile"] = self._cookie_file
 
         self._ydl = yt_dlp.YoutubeDL(self._ydl_opts)
         # OAuth configuration
         self._oauth_config: Optional[Dict[str, Any]] = None
         self._load_oauth_config()
-
-    def _sync_cookies_file(self) -> None:
-        """Export Netscape cookie file for yt-dlp and mpv to stream without 403."""
-        if not self.auth_file_path or not os.path.exists(self.auth_file_path):
-            return
-        try:
-            with open(self.auth_file_path, "r") as f:
-                data = json.load(f)
-            cookie_str = data.get("Cookie", "") or data.get("cookie", "")
-            if cookie_str:
-                with open(self._cookie_file, "w") as f:
-                    f.write("# Netscape HTTP Cookie File\n")
-                    for item in cookie_str.split("; "):
-                        if "=" in item:
-                            parts = item.split("=", 1)
-                            f.write(f".youtube.com\tTRUE\t/\tTRUE\t2147483647\t{parts[0].strip()}\t{parts[1].strip()}\n")
-                logger.info("Exported Netscape cookie file to %s", self._cookie_file)
-        except Exception as ex:
-            logger.warning("Failed to export cookie file: %s", ex)
 
     def _load_oauth_config(self) -> None:
         """Load OAuth tokens and credentials if available."""

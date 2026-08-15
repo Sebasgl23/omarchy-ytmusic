@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 from core.models import Track, Playlist, PlaybackState
 from core.interfaces import MusicRepository, AudioPlayer
+from core.paths import SOCKET_PATH, RUNTIME_DIR
 from services.playback_orchestrator import PlaybackOrchestrator
 from ipc.socket_server import IpcServer
 
@@ -152,12 +153,25 @@ class TestIpcServer(unittest.IsolatedAsyncioTestCase):
         self.mock_player.get_state = MagicMock(return_value=PlaybackState(status="stopped"))
         self.mock_player.set_on_eof_callback = MagicMock()
         self.orchestrator = PlaybackOrchestrator(self.mock_repo, self.mock_player)
-        self.ipc = IpcServer(self.mock_repo, self.mock_player, self.orchestrator, socket_path="/tmp/test-omarchy.sock")
+        self.test_socket = str(RUNTIME_DIR / "test-omarchy.sock")
+        self.ipc = IpcServer(self.mock_repo, self.mock_player, self.orchestrator, socket_path=self.test_socket)
+
+    async def asyncTearDown(self):
+        await self.ipc.stop()
 
     def test_registered_handlers(self):
         expected = ["ping", "get_state", "search", "get_playlists", "play_track", "add_to_queue", "seek", "next", "prev"]
         for handler in expected:
             self.assertIn(handler, self.ipc._handlers)
+
+    async def test_socket_lifecycle_and_permissions(self):
+        await self.ipc.start()
+        self.assertTrue(os.path.exists(self.test_socket))
+        # Check permissions are strictly 0600 (owner only)
+        mode = oct(os.stat(self.test_socket).st_mode & 0o777)
+        self.assertEqual(mode, "0o600")
+        await self.ipc.stop()
+        self.assertFalse(os.path.exists(self.test_socket))
 
     async def test_ping_handler(self):
         res = await self.ipc._handlers["ping"]({})
