@@ -132,6 +132,10 @@ def start_daemon(silent: bool = False):
     if not silent:
         print("Starting Omarchy YouTube Music Daemon in background...")
     with open(LOG_FILE, "a") as log_f:
+        try:
+            os.chmod(LOG_FILE, 0o600)
+        except Exception:
+            pass
         proc = subprocess.Popen(
             [venv_python, main_py],
             stdin=subprocess.DEVNULL,
@@ -141,6 +145,10 @@ def start_daemon(silent: bool = False):
         )
     with open(PID_FILE, "w") as f:
         f.write(str(proc.pid))
+    try:
+        os.chmod(PID_FILE, 0o600)
+    except Exception:
+        pass
 
     for _ in range(30):
         if os.path.exists(SOCKET_PATH):
