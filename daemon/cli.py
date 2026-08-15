@@ -10,7 +10,7 @@ import time
 
 # Ensure daemon directory is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core.paths import SOCKET_PATH, PID_FILE, LOG_FILE
+from core.paths import SOCKET_PATH, PID_FILE, LOG_FILE, COOKIE_FILE
 
 
 def send_ipc(command: str, args: dict = None, timeout: float = 15.0) -> dict:
@@ -187,9 +187,11 @@ def setup_auth():
         if os.path.exists(auth_file):
             os.remove(auth_file)
             print(f"\nRemoved credentials file: {auth_file}")
-        cookie_file = "/tmp/omarchy_ytmusic_cookies.txt"
-        if os.path.exists(cookie_file):
-            os.remove(cookie_file)
+        if os.path.exists(COOKIE_FILE):
+            os.remove(COOKIE_FILE)
+        plugin_cookie = os.path.join(plugin_dir, "cookies.txt")
+        if os.path.exists(plugin_cookie):
+            os.remove(plugin_cookie)
         print("Configured for Anonymous Mode.")
         print("Restarting daemon...")
         stop_daemon()

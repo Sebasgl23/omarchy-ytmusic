@@ -184,5 +184,23 @@ class TestIpcServer(unittest.IsolatedAsyncioTestCase):
         self.assertIn("queue_length", res)
 
 
+class TestRuntimeSecurityPaths(unittest.TestCase):
+    """Test that all sockets, pid, logs and cookies are securely located in private runtime directory."""
+
+    def test_paths_are_not_in_shared_tmp(self):
+        from core.paths import SOCKET_PATH, MPV_SOCKET_PATH, PID_FILE, LOG_FILE, COOKIE_FILE, RUNTIME_DIR
+
+        for path in [SOCKET_PATH, MPV_SOCKET_PATH, PID_FILE, LOG_FILE, COOKIE_FILE]:
+            self.assertFalse(
+                path.startswith("/tmp/"),
+                f"Path {path} should not be located directly in shared /tmp",
+            )
+            self.assertTrue(
+                str(RUNTIME_DIR) in path,
+                f"Path {path} should reside inside RUNTIME_DIR ({RUNTIME_DIR})",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -8,7 +8,7 @@ import subprocess
 from typing import Optional, Callable
 from core.models import Track, PlaybackState
 from core.interfaces import AudioPlayer
-from core.paths import MPV_SOCKET_PATH
+from core.paths import MPV_SOCKET_PATH, COOKIE_FILE
 
 logger = logging.getLogger("mpv_player")
 
@@ -57,8 +57,11 @@ class MpvPlayerService(AudioPlayer):
             "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
             "--referrer=https://www.youtube.com/",
         ]
-        if os.path.exists("/tmp/omarchy_ytmusic_cookies.txt"):
-            mpv_cmd.append("--cookies-file=/tmp/omarchy_ytmusic_cookies.txt")
+        # Check secure runtime cookies or plugin directory cookies
+        plugin_cookie = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "cookies.txt")
+        active_cookie = COOKIE_FILE if os.path.exists(COOKIE_FILE) else (plugin_cookie if os.path.exists(plugin_cookie) else None)
+        if active_cookie:
+            mpv_cmd.append(f"--cookies-file={active_cookie}")
 
         logger.info("Starting headless MPV process: %s", " ".join(mpv_cmd))
         self._process = subprocess.Popen(

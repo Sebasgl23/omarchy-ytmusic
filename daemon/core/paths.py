@@ -30,3 +30,5 @@ SOCKET_PATH = str(RUNTIME_DIR / "daemon.sock")
 MPV_SOCKET_PATH = str(RUNTIME_DIR / "mpv.sock")
 PID_FILE = str(RUNTIME_DIR / "daemon.pid")
 LOG_FILE = str(RUNTIME_DIR / "daemon.log")
+COOKIE_FILE = str(RUNTIME_DIR / "cookies.txt")
+
