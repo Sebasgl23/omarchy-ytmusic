@@ -195,12 +195,12 @@ class IpcServer:
         return await self.orchestrator.previous_track()
 
     async def _handle_seek(self, args: dict) -> float:
-        seconds = float(args.get("seconds", 0.0))
+        seconds = max(0.0, float(args.get("seconds", 0.0)))
         await self.player.seek(seconds)
         return seconds
 
     async def _handle_set_volume(self, args: dict) -> int:
-        volume = int(args.get("volume", 100))
+        volume = max(0, min(100, int(args.get("volume", 100))))
         await self.player.set_volume(volume)
         return volume
 
