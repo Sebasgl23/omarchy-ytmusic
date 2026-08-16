@@ -12,7 +12,9 @@ A native, ultra-lightweight **YouTube Music** player and bar widget built specif
 - **Ultra-low Memory Footprint:** Consumes ~100–200 MB RAM (compared to 700MB+ for Electron-based music apps).
 - **Native Omarchy Theme Integration:** Pure QML/Quickshell interface adopting active system fonts, rounded corners, blur, and dynamic color palettes.
 - **Fast Music Search:** Instant search for songs, albums, and artists with 1-click playback.
-- **Playlist & Mix Browser:** Explore user library playlists and discover dynamic YouTube Music mixes with drill-down song inspection.
+- **Personalized Home Feed:** Discover community trending playlists and a custom "Quick Picks" (Selección Rápida) shelf injected directly from your Liked Music library.
+- **Smart Error Handling:** Automatically skips region-blocked or deleted tracks in playlists without aborting playback.
+- **Playlist & Mix Browser:** Explore user library playlists, view track lists inside albums/mixes, and selectively queue or save songs.
 - **Interactive Liked Songs:** Real-time synchronized like/unlike tracking (`Liked Music`).
 - **Infinite Radio / Autoplay:** Automatically populates similar tracks seamlessly in the background when playing individual tracks.
 - **Permanent Google OAuth 2.0:** Secure, non-expiring login with background access token refresh via Google Cloud Console.
@@ -125,6 +127,7 @@ The player daemon can be controlled headlessly from scripts, keybindings, or ter
 ~/.config/omarchy/plugins/sebasgl23.ytmusic/bin/omarchy-ytmusic volume 75
 
 # Playlists & Library
+~/.config/omarchy/plugins/sebasgl23.ytmusic/bin/omarchy-ytmusic home
 ~/.config/omarchy/plugins/sebasgl23.ytmusic/bin/omarchy-ytmusic playlists
 ~/.config/omarchy/plugins/sebasgl23.ytmusic/bin/omarchy-ytmusic playlist_tracks "LM"
 ~/.config/omarchy/plugins/sebasgl23.ytmusic/bin/omarchy-ytmusic like "<video_id>"
@@ -143,6 +146,7 @@ sebasgl23.ytmusic/
 ├── components/
 │   ├── IconButton.qml         # Theme-aware interactive button
 │   ├── NowPlayingView.qml     # Player view (artwork, seekbar, volume, controls)
+│   ├── HomeView.qml           # Personalized home feed and suggestions carousels
 │   ├── SearchView.qml         # Live search view & results list
 │   ├── PlaylistsView.qml      # Playlist browser & track inspector
 │   ├── QueueView.qml          # Current playback queue
