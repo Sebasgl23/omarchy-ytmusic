@@ -2,7 +2,7 @@
 
 A native, ultra-lightweight **YouTube Music** player and bar widget built specifically for **Omarchy** (Hyprland + Quickshell).
 
-<img width="392" height="487" alt="image" src="https://github.com/user-attachments/assets/289e0e88-4dae-496f-ae34-76c415addf98" />
+<img width="408" height="506" alt="image" src="https://github.com/user-attachments/assets/6a65d4a9-6eee-431a-9676-4dd81ae5861d" />
 
 
 ---
