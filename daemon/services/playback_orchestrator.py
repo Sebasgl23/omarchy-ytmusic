@@ -126,20 +126,23 @@ class PlaybackOrchestrator:
 
     async def _play_current_index(self) -> bool:
         async with self._play_lock:
-            if self.current_index < 0 or self.current_index >= len(self.queue):
-                return False
+            attempts = 0
+            while self.current_index >= 0 and self.current_index < len(self.queue) and attempts < 10:
+                track = self.queue[self.current_index]
+                logger.info("Resolving stream URL for track: %s - %s (%s)", track.artist, track.title, track.video_id)
+                stream_url = await self.repo.get_stream_url(track.video_id)
+                
+                if stream_url:
+                    await self.player.play_url(stream_url, track)
+                    # Pre-fetch next track in background for instantaneous skip
+                    asyncio.create_task(self._prefetch_next_track())
+                    return True
+                
+                logger.error("Failed to retrieve stream URL for video %s. Skipping to next.", track.video_id)
+                self.current_index += 1
+                attempts += 1
 
-            track = self.queue[self.current_index]
-            logger.info("Resolving stream URL for track: %s - %s (%s)", track.artist, track.title, track.video_id)
-            stream_url = await self.repo.get_stream_url(track.video_id)
-            if not stream_url:
-                logger.error("Failed to retrieve stream URL for video %s", track.video_id)
-                return False
-
-            await self.player.play_url(stream_url, track)
-            # Pre-fetch next track in background for instantaneous skip
-            asyncio.create_task(self._prefetch_next_track())
-            return True
+            return False
 
     async def _prefetch_next_track(self) -> None:
         """Pre-extract stream URL for upcoming track so 'Next' is instant."""

@@ -40,6 +40,8 @@ Panel {
   property bool isLoadingTracks:     false
   property var  queueList:           []
   property int  queueIndex:          -1
+  property var  homeData:            []
+  property bool isLoadingHome:       false
 
   // ── UI state ──────────────────────────────────────────────────────────────
   property int  activeTab: 0
@@ -100,6 +102,13 @@ Panel {
     root.isLoadingPlaylists = true
     playlistsProc.command = [cliBin, "playlists"]
     playlistsProc.running = true
+  }
+
+  function doFetchHome() {
+    if (homeProc.running) return
+    root.isLoadingHome = true
+    homeProc.command = [cliBin, "home"]
+    homeProc.running = true
   }
 
   function doFetchPlaylistTracks(pl) {
@@ -214,6 +223,21 @@ Panel {
       }
     }
     onExited: function(code) { root.isLoadingPlaylists = false }
+  }
+
+  Process {
+    id: homeProc
+    running: false
+    stdout: StdioCollector {
+      id: homeOut
+      waitForEnd: true
+      onStreamFinished: {
+        root.isLoadingHome = false
+        var res = root.parseObj(homeOut.text)
+        if (res && res.status === "ok" && Array.isArray(res.data)) root.homeData = res.data
+      }
+    }
+    onExited: function(code) { root.isLoadingHome = false }
   }
 
   Process {
@@ -343,6 +367,14 @@ Panel {
             onClicked: root.activeTab = 0
           }
           IconButton {
+            text: "\uf015" // Home icon (FontAwesome)
+            toolTipText: "Home"
+            active: root.activeTab === 3
+            buttonSize: Style.space(26)
+            foreground: root.foreground
+            onClicked: { root.activeTab = 3; root.doFetchHome() }
+          }
+          IconButton {
             text: "\uf002"
             toolTipText: "Search"
             active: root.activeTab === 1
@@ -431,6 +463,34 @@ Panel {
           onCloseRequested: { root.showQueueView = false }
         }
 
+        HomeView {
+          anchors.fill: parent
+          visible: root.activeTab === 3 && !root.showAddToPlaylistDialog && !root.showQueueOptionDialog
+          homeData: root.homeData
+          isLoadingHome: root.isLoadingHome
+          foreground: root.foreground
+          onItemClicked: function(item) {
+            if (item.videoId) {
+               // Play track
+               var thumb = (item.thumbnails && item.thumbnails.length > 0) ? item.thumbnails[item.thumbnails.length - 1].url : ""
+               var t = {
+                 title: item.title, 
+                 video_id: item.videoId,
+                 artist: item.description || item.subtitle || "",
+                 thumbnail_url: thumb
+               }
+               root.doExecute(["play_track", JSON.stringify(t)])
+               root.activeTab = 0
+            } else if (item.playlistId || item.browseId) {
+               // Open playlist preview in Playlists tab
+               var pid = item.playlistId || item.browseId
+               var pl = { playlist_id: pid, title: item.title }
+               root.doFetchPlaylistTracks(pl)
+               root.activeTab = 2
+            }
+          }
+        }
+
         SearchView {
           anchors.fill: parent
           visible: root.activeTab === 1 && !root.showAddToPlaylistDialog && !root.showQueueOptionDialog
@@ -472,7 +532,10 @@ Panel {
             }
             root.activeTab = 0
           }
-          onQueueTrackRequested: function(t) { root.doExecute(["add_to_queue", JSON.stringify(t)]) }
+          onOpenQueueOptionsRequested: function(t) {
+            root.trackToAddToQueue = t
+            root.showQueueOptionDialog = true
+          }
           onAddToPlaylistRequested: function(t) {
             root.trackToAddToPlaylist = t; root.showAddToPlaylistDialog = true; root.doFetchPlaylists()
           }

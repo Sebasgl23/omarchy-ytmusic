@@ -351,6 +351,9 @@ def main():
         query = " ".join(sys.argv[2:]).strip()
         res = send_ipc("search", {"query": query})
         print(json.dumps(res, indent=2))
+    elif action == "home":
+        res = send_ipc("get_home")
+        print(json.dumps(res, indent=2))
     elif action == "play_track":
         track_str = " ".join(sys.argv[2:]).strip()
         track_data = json.loads(track_str) if track_str else {}

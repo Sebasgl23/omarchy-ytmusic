@@ -76,6 +76,16 @@ Item {
     searchProc.running = true
   }
 
+  property var  homeData:            []
+  property bool isLoadingHome:       false
+
+  function fetchHome() {
+    if (homeProc.running) return
+    root.isLoadingHome = true
+    homeProc.command = [cliBin, "home"]
+    homeProc.running = true
+  }
+
   function fetchPlaylists() {
     if (playlistsProc.running) return
     root.isLoadingPlaylists = true
@@ -157,5 +167,22 @@ Item {
       }
     }
     onExited: function(code) { root.isLoadingPlaylists = false }
+  }
+
+  Process {
+    id: homeProc
+    running: false
+    stdout: StdioCollector {
+      id: homeOut
+      waitForEnd: true
+      onStreamFinished: {
+        root.isLoadingHome = false
+        var res = root.parseJson(homeOut.text)
+        if (res && res.status === "ok" && Array.isArray(res.data)) {
+          root.homeData = res.data
+        }
+      }
+    }
+    onExited: function(code) { root.isLoadingHome = false }
   }
 }

@@ -148,6 +148,45 @@ class YtMusicService(MusicRepository):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _do_search)
 
+    async def get_home(self) -> List[dict]:
+        """Retrieve home feed suggestions and inject Liked Music as Quick Picks."""
+        # 1. Fetch user's Liked Music to build a custom Quick Picks shelf
+        liked_tracks = await self.get_playlist_tracks("LM")
+        
+        # 2. Fetch generic/anonymous home feed in executor
+        def _fetch_home() -> List[dict]:
+            try:
+                return self._ytmusic.get_home(limit=4)
+            except Exception as ex:
+                logger.error("Error fetching home suggestions: %s", ex)
+                return []
+        
+        loop = asyncio.get_running_loop()
+        home_feed = await loop.run_in_executor(None, _fetch_home)
+        
+        # 3. Inject "Selección Rápida" shelf
+        if liked_tracks:
+            import random
+            top_liked = liked_tracks[:40]
+            random.shuffle(top_liked)
+            quick_picks = top_liked[:15]
+            
+            custom_shelf = {
+                "title": "Selección Rápida",
+                "contents": []
+            }
+            for t in quick_picks:
+                custom_shelf["contents"].append({
+                    "title": t.title,
+                    "videoId": t.video_id,
+                    "thumbnails": [{"url": t.thumbnail_url, "width": 544, "height": 544}],
+                    "description": t.artist
+                })
+            
+            home_feed.insert(0, custom_shelf)
+            
+        return home_feed
+
     async def get_playlists(self) -> List[Playlist]:
         """Retrieve user library playlists exclusive to YouTube Music via OAuth."""
         def _fetch_playlists() -> List[Playlist]:
@@ -321,7 +360,12 @@ class YtMusicService(MusicRepository):
                         return tracks
 
                 # Public / Explore playlist fallback via ytmusicapi
-                playlist_data = self._ytmusic.get_playlist(playlistId=playlist_id, limit=100)
+                if playlist_id.startswith("MPREb_"):
+                    # It's an album!
+                    playlist_data = self._ytmusic.get_album(browseId=playlist_id)
+                else:
+                    playlist_data = self._ytmusic.get_playlist(playlistId=playlist_id, limit=100)
+                
                 for item in playlist_data.get("tracks", []):
                     video_id = item.get("videoId")
                     if not video_id:

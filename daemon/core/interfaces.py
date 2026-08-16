@@ -29,6 +29,11 @@ class MusicRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_home(self) -> List[dict]:
+        """Retrieve home feed suggestions and shelves."""
+        pass
+
+    @abstractmethod
     async def get_stream_url(self, video_id: str) -> Optional[str]:
         """Extract playable direct audio stream URL."""
         pass

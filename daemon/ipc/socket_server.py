@@ -31,6 +31,7 @@ class IpcServer:
             "ping": self._handle_ping,
             "shutdown": self._handle_shutdown,
             "get_state": self._handle_get_state,
+            "get_home": self._handle_get_home,
             "search": self._handle_search,
             "get_playlists": self._handle_get_playlists,
             "get_playlist_tracks": self._handle_get_playlist_tracks,
@@ -141,6 +142,9 @@ class IpcServer:
 
     async def _handle_get_state(self, args: dict) -> dict:
         return self.orchestrator.get_state().to_dict()
+
+    async def _handle_get_home(self, args: dict) -> list:
+        return await self.repo.get_home()
 
     async def _handle_search(self, args: dict) -> list:
         query = args.get("query", "")

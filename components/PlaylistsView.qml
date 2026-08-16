@@ -21,7 +21,7 @@ Item {
   signal openPlaylistRequested(var playlist)
   signal backRequested()
   signal playTrackRequested(var track, int index)
-  signal queueTrackRequested(var track)
+  signal openQueueOptionsRequested(var track)
   signal addToPlaylistRequested(var track)
 
   Column {
@@ -184,7 +184,7 @@ Item {
 
                   // Track Info (expanded width)
                   Column {
-                    width: parent.width - Style.space(75)
+                    width: parent.width - Style.space(130)
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 1
 
@@ -214,6 +214,26 @@ Item {
                     toolTipText: "Play Song"
                     foreground: root.foreground
                     onClicked: root.playTrackRequested(modelData, index)
+                  }
+
+                  // Add to Queue (Options: Next / End)
+                  IconButton {
+                    text: "\uf03a"
+                    buttonSize: Style.space(24)
+                    anchors.verticalCenter: parent.verticalCenter
+                    toolTipText: "Add to Queue Options"
+                    foreground: root.foreground
+                    onClicked: root.openQueueOptionsRequested(modelData)
+                  }
+
+                  // Add to Playlist
+                  IconButton {
+                    text: "\uf067"
+                    buttonSize: Style.space(24)
+                    anchors.verticalCenter: parent.verticalCenter
+                    toolTipText: "Add to Playlist"
+                    foreground: root.foreground
+                    onClicked: root.addToPlaylistRequested(modelData)
                   }
                 }
               }
