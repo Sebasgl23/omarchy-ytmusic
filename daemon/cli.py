@@ -1,9 +1,11 @@
 """CLI commands handler for Omarchy YouTube Music with smart header parsing."""
 
+import ctypes
 import fcntl
 import json
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -137,6 +139,54 @@ def is_running() -> bool:
     return False
 
 
+def _pidfd_open(pid: int) -> int:
+    libc = ctypes.CDLL(None, use_errno=True)
+    pidfd_open = libc.pidfd_open
+    pidfd_open.argtypes = [ctypes.c_int, ctypes.c_uint]
+    pidfd_open.restype = ctypes.c_int
+    pid_fd = pidfd_open(pid, 0)
+    if pid_fd == -1:
+        error_number = ctypes.get_errno()
+        raise OSError(error_number, os.strerror(error_number))
+    return pid_fd
+
+
+def _pidfd_send_signal(pid_fd: int, signal_number: int) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    pidfd_send_signal = libc.pidfd_send_signal
+    pidfd_send_signal.argtypes = [
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_uint,
+    ]
+    pidfd_send_signal.restype = ctypes.c_int
+    if pidfd_send_signal(pid_fd, signal_number, None, 0) == -1:
+        error_number = ctypes.get_errno()
+        raise OSError(error_number, os.strerror(error_number))
+
+
+def terminate_verified_daemon(pid: int) -> bool:
+    """Signal the verified process identity without a PID-reuse race."""
+    if pid <= 0:
+        return False
+
+    try:
+        pid_fd = _pidfd_open(pid)
+    except (AttributeError, OSError):
+        return False
+
+    try:
+        if not is_ytmusic_daemon_process(pid):
+            return False
+        _pidfd_send_signal(pid_fd, signal.SIGTERM)
+        return True
+    except (AttributeError, OSError):
+        return False
+    finally:
+        os.close(pid_fd)
+
+
 def _write_pid_file(pid: int) -> None:
     temp_pid_file = f"{PID_FILE}.{os.getpid()}.tmp"
     fd = os.open(temp_pid_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -249,8 +299,7 @@ def stop_daemon():
 
             # Fallback to SIGTERM if process is still alive
             try:
-                if is_ytmusic_daemon_process(pid):
-                    os.kill(pid, 15)
+                if terminate_verified_daemon(pid):
                     for _ in range(20):
                         if not is_ytmusic_daemon_process(pid):
                             break

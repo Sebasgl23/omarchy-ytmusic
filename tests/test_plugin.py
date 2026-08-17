@@ -282,6 +282,35 @@ class TestProcessVerificationAndStalePidSecurity(unittest.TestCase):
             # Verify stale PID_FILE was safely cleaned up
             self.assertTrue(any("daemon.pid" in str(c) for c in mock_remove.call_args_list))
 
+    def test_termination_uses_pidfd_bound_to_the_verified_process(self):
+        import cli
+        import signal
+        from unittest.mock import patch
+
+        with patch("cli._pidfd_open", return_value=77) as mock_pidfd_open, \
+             patch("cli.is_ytmusic_daemon_process", return_value=True), \
+             patch("cli._pidfd_send_signal") as mock_pidfd_signal, \
+             patch("cli.os.close") as mock_close, \
+             patch("cli.os.kill") as mock_kill:
+            self.assertTrue(cli.terminate_verified_daemon(4242))
+
+        mock_pidfd_open.assert_called_once_with(4242)
+        mock_pidfd_signal.assert_called_once_with(77, signal.SIGTERM)
+        mock_close.assert_called_once_with(77)
+        mock_kill.assert_not_called()
+
+    def test_termination_fails_closed_when_pidfd_is_unavailable(self):
+        import cli
+        from unittest.mock import patch
+
+        with patch("cli._pidfd_open", side_effect=OSError), \
+             patch("cli._pidfd_send_signal") as mock_pidfd_signal, \
+             patch("cli.os.kill") as mock_kill:
+            self.assertFalse(cli.terminate_verified_daemon(4242))
+
+        mock_pidfd_signal.assert_not_called()
+        mock_kill.assert_not_called()
+
     def test_start_daemon_serializes_before_rechecking_process_state(self):
         import cli
         from unittest.mock import patch
