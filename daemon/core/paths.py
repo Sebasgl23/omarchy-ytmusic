@@ -29,6 +29,6 @@ RUNTIME_DIR = get_runtime_dir()
 SOCKET_PATH = str(RUNTIME_DIR / "daemon.sock")
 MPV_SOCKET_PATH = str(RUNTIME_DIR / "mpv.sock")
 PID_FILE = str(RUNTIME_DIR / "daemon.pid")
+START_LOCK_FILE = str(RUNTIME_DIR / "daemon-start.lock")
 LOG_FILE = str(RUNTIME_DIR / "daemon.log")
 COOKIE_FILE = str(RUNTIME_DIR / "cookies.txt")
-

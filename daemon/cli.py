@@ -1,5 +1,6 @@
 """CLI commands handler for Omarchy YouTube Music with smart header parsing."""
 
+import fcntl
 import json
 import os
 import re
@@ -10,7 +11,7 @@ import time
 
 # Ensure daemon directory is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core.paths import SOCKET_PATH, PID_FILE, LOG_FILE, COOKIE_FILE
+from core.paths import SOCKET_PATH, PID_FILE, START_LOCK_FILE, LOG_FILE, COOKIE_FILE
 
 
 def send_ipc(command: str, args: dict = None, timeout: float = 15.0) -> dict:
@@ -136,11 +137,46 @@ def is_running() -> bool:
     return False
 
 
-def start_daemon(silent: bool = False):
+def _write_pid_file(pid: int) -> None:
+    temp_pid_file = f"{PID_FILE}.{os.getpid()}.tmp"
+    fd = os.open(temp_pid_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w") as pid_file:
+            pid_file.write(str(pid))
+        os.replace(temp_pid_file, PID_FILE)
+        os.chmod(PID_FILE, 0o600)
+    finally:
+        if os.path.exists(temp_pid_file):
+            os.remove(temp_pid_file)
+
+
+def _clean_failed_start(proc: subprocess.Popen) -> None:
+    if proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=2)
+
+    try:
+        with open(PID_FILE, "r") as pid_file:
+            recorded_pid = int(pid_file.read().strip())
+    except (OSError, ValueError):
+        recorded_pid = None
+
+    if recorded_pid == proc.pid:
+        try:
+            os.remove(PID_FILE)
+        except OSError:
+            pass
+
+
+def _start_daemon_locked(silent: bool = False) -> bool:
     if is_running():
         if not silent:
             print("Daemon is already running.")
-        return
+        return True
 
     daemon_dir = os.path.dirname(os.path.abspath(__file__))
     venv_python = sys.executable
@@ -160,22 +196,35 @@ def start_daemon(silent: bool = False):
             stderr=log_f,
             start_new_session=True,
         )
-    with open(PID_FILE, "w") as f:
-        f.write(str(proc.pid))
-    try:
-        os.chmod(PID_FILE, 0o600)
-    except Exception:
-        pass
+    _write_pid_file(proc.pid)
 
     for _ in range(30):
         if os.path.exists(SOCKET_PATH):
             if not silent:
                 print(f"Daemon started successfully (PID {proc.pid}).")
-            return
+            return True
+        if proc.poll() is not None:
+            _clean_failed_start(proc)
+            if not silent:
+                print(f"Daemon failed to start. Check {LOG_FILE}")
+            return False
         time.sleep(0.1)
 
+    _clean_failed_start(proc)
     if not silent:
-        print(f"Daemon process started (PID {proc.pid}), waiting for socket... check {LOG_FILE}")
+        print(f"Daemon failed to create its socket. Check {LOG_FILE}")
+    return False
+
+
+def start_daemon(silent: bool = False) -> bool:
+    lock_fd = os.open(START_LOCK_FILE, os.O_RDWR | os.O_CREAT, 0o600)
+    with os.fdopen(lock_fd, "r+") as lock_file:
+        os.chmod(START_LOCK_FILE, 0o600)
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            return _start_daemon_locked(silent=silent)
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def stop_daemon():

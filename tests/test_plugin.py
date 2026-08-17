@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import tempfile
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -191,9 +192,17 @@ class TestRuntimeSecurityPaths(unittest.TestCase):
     """Test that all sockets, pid, logs and cookies are securely located in private runtime directory."""
 
     def test_paths_are_not_in_shared_tmp(self):
-        from core.paths import SOCKET_PATH, MPV_SOCKET_PATH, PID_FILE, LOG_FILE, COOKIE_FILE, RUNTIME_DIR
+        from core.paths import (
+            SOCKET_PATH,
+            MPV_SOCKET_PATH,
+            PID_FILE,
+            START_LOCK_FILE,
+            LOG_FILE,
+            COOKIE_FILE,
+            RUNTIME_DIR,
+        )
 
-        for path in [SOCKET_PATH, MPV_SOCKET_PATH, PID_FILE, LOG_FILE, COOKIE_FILE]:
+        for path in [SOCKET_PATH, MPV_SOCKET_PATH, PID_FILE, START_LOCK_FILE, LOG_FILE, COOKIE_FILE]:
             self.assertFalse(
                 path.startswith("/tmp/"),
                 f"Path {path} should not be located directly in shared /tmp",
@@ -272,6 +281,42 @@ class TestProcessVerificationAndStalePidSecurity(unittest.TestCase):
             mock_kill.assert_not_called()
             # Verify stale PID_FILE was safely cleaned up
             self.assertTrue(any("daemon.pid" in str(c) for c in mock_remove.call_args_list))
+
+    def test_start_daemon_serializes_before_rechecking_process_state(self):
+        import cli
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as runtime_dir:
+            lock_path = os.path.join(runtime_dir, "daemon-start.lock")
+            with patch.object(cli, "START_LOCK_FILE", lock_path), \
+                 patch("cli.is_running", return_value=True) as mock_is_running, \
+                 patch("cli.subprocess.Popen") as mock_popen:
+                self.assertTrue(cli.start_daemon(silent=True))
+
+            mock_is_running.assert_called_once_with()
+            mock_popen.assert_not_called()
+            self.assertEqual(os.stat(lock_path).st_mode & 0o777, 0o600)
+
+    def test_failed_start_terminates_spawned_process_and_removes_its_pid(self):
+        import cli
+        from unittest.mock import MagicMock, patch
+
+        proc = MagicMock()
+        proc.pid = 4242
+        proc.poll.return_value = None
+        proc.wait.return_value = 0
+
+        with tempfile.TemporaryDirectory() as runtime_dir:
+            pid_path = os.path.join(runtime_dir, "daemon.pid")
+            with open(pid_path, "w", encoding="utf-8") as pid_file:
+                pid_file.write(str(proc.pid))
+
+            with patch.object(cli, "PID_FILE", pid_path):
+                cli._clean_failed_start(proc)
+
+            proc.terminate.assert_called_once_with()
+            proc.wait.assert_called_once_with(timeout=2)
+            self.assertFalse(os.path.exists(pid_path))
 
 
 class TestPluginPortability(unittest.TestCase):
