@@ -13,6 +13,7 @@ import yt_dlp
 
 from core.models import Track, Playlist
 from core.interfaces import MusicRepository
+from core.files import atomic_write_private_json
 
 logger = logging.getLogger("ytmusic_service")
 
@@ -92,13 +93,7 @@ class YtMusicService(MusicRepository):
                 expires_in = data.get("expires_in", 3600)
                 self._oauth_config["access_token"] = new_token
                 self._oauth_config["expires_at"] = int(time.time()) + expires_in
-                # Persist updated token to auth.json with strict private permissions
-                with open(self.auth_file_path, "w") as f:
-                    json.dump(self._oauth_config, f, indent=2)
-                try:
-                    os.chmod(self.auth_file_path, 0o600)
-                except Exception:
-                    pass
+                atomic_write_private_json(self.auth_file_path, self._oauth_config)
                 logger.info("Successfully refreshed Google OAuth 2.0 access token.")
                 return new_token
             else:

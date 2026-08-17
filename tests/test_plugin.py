@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from core.models import Track, Playlist, PlaybackState
 from core.interfaces import MusicRepository, AudioPlayer
 from core.paths import SOCKET_PATH, RUNTIME_DIR
+from core.files import atomic_write_private_json
 from services.playback_orchestrator import PlaybackOrchestrator
 from services.mpv_player_service import MpvPlayerService
 from ipc.socket_server import IpcServer
@@ -207,6 +208,36 @@ class TestIpcServer(unittest.IsolatedAsyncioTestCase):
         # Allow loop to process call_soon
         await asyncio.sleep(0.01)
         self.assertTrue(shutdown_called)
+
+    async def test_non_object_request_returns_structured_error(self):
+        await self.ipc.start()
+        reader, writer = await asyncio.open_unix_connection(self.test_socket)
+        writer.write(b"[]\n")
+        await writer.drain()
+
+        response = json.loads((await reader.readline()).decode("utf-8"))
+        writer.close()
+        await writer.wait_closed()
+
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(response["error"], "Invalid request")
+        self.assertIsNone(response["id"])
+
+
+class TestPrivateFilePersistence(unittest.TestCase):
+    def test_atomic_json_write_replaces_file_with_private_permissions(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            auth_path = os.path.join(temp_dir, "auth.json")
+            with open(auth_path, "w", encoding="utf-8") as auth_file:
+                auth_file.write("old")
+            os.chmod(auth_path, 0o644)
+
+            atomic_write_private_json(auth_path, {"refresh_token": "secret"})
+
+            with open(auth_path, encoding="utf-8") as auth_file:
+                self.assertEqual(json.load(auth_file), {"refresh_token": "secret"})
+            self.assertEqual(os.stat(auth_path).st_mode & 0o777, 0o600)
+            self.assertEqual(os.listdir(temp_dir), ["auth.json"])
 
 
 class TestRuntimeSecurityPaths(unittest.TestCase):

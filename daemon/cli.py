@@ -14,6 +14,7 @@ import time
 # Ensure daemon directory is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core.paths import SOCKET_PATH, PID_FILE, START_LOCK_FILE, LOG_FILE, COOKIE_FILE
+from core.files import atomic_write_private_json
 
 
 def _request_ipc(command: str, args: dict = None, timeout: float = 15.0) -> dict:
@@ -405,14 +406,7 @@ def setup_auth():
                     token_dict["client_id"] = client_id
                     token_dict["client_secret"] = client_secret
                 
-                with open(auth_file, "w") as f:
-                    json.dump(token_dict, f, indent=2)
-                
-                # Protect file permissions
-                try:
-                    os.chmod(auth_file, 0o600)
-                except Exception:
-                    pass
+                atomic_write_private_json(auth_file, token_dict)
                 
                 print(f"\n[OK] Authentication successful! Saved to: {auth_file}")
                 print("Restarting daemon to apply your credentials...")

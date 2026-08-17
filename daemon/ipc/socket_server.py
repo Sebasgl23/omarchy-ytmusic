@@ -100,11 +100,19 @@ class IpcServer:
                 if not request_str:
                     continue
 
+                request = None
                 try:
                     request = json.loads(request_str)
+                    if not isinstance(request, dict):
+                        raise ValueError("Request must be a JSON object")
+
                     cmd = request.get("command")
                     args = request.get("args", {})
                     req_id = request.get("id")
+                    if not isinstance(cmd, str) or not cmd:
+                        raise ValueError("Command must be a non-empty string")
+                    if not isinstance(args, dict):
+                        raise ValueError("Args must be a JSON object")
 
                     handler = self._handlers.get(cmd)
                     if handler:
@@ -114,7 +122,12 @@ class IpcServer:
                         response = {"id": req_id, "status": "error", "error": f"Unknown command '{cmd}'"}
                 except Exception as ex:
                     logger.error("Error processing request: %s", ex)
-                    response = {"id": request.get("id") if 'request' in locals() else None, "status": "error", "error": str(ex)}
+                    req_id = request.get("id") if isinstance(request, dict) else None
+                    response = {
+                        "id": req_id,
+                        "status": "error",
+                        "error": "Invalid request",
+                    }
 
                 payload = json.dumps(response) + "\n"
                 writer.write(payload.encode("utf-8"))
