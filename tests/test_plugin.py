@@ -286,7 +286,7 @@ class TestProcessVerificationAndStalePidSecurity(unittest.TestCase):
             self.assertFalse(is_ytmusic_daemon_process(12345))
 
     def test_stop_daemon_does_not_kill_unrelated_reused_pid(self):
-        from cli import stop_daemon
+        from cli import _stop_daemon_locked
         from unittest.mock import patch, mock_open
 
         # Simulate PID_FILE existing with an unrelated process PID
@@ -296,12 +296,49 @@ class TestProcessVerificationAndStalePidSecurity(unittest.TestCase):
              patch("os.kill") as mock_kill, \
              patch("os.remove") as mock_remove:
             
-            stop_daemon()
+            self.assertTrue(_stop_daemon_locked())
             
             # Verify SIGTERM (15) was NEVER sent to the unrelated PID
             mock_kill.assert_not_called()
             # Verify stale PID_FILE was safely cleaned up
             self.assertTrue(any("daemon.pid" in str(c) for c in mock_remove.call_args_list))
+
+    def test_stop_preserves_runtime_files_when_process_cannot_be_terminated(self):
+        import cli
+        from unittest.mock import mock_open, patch
+
+        with patch("cli.os.path.exists", return_value=True), \
+             patch("builtins.open", mock_open(read_data="4242")), \
+             patch("cli.is_ytmusic_daemon_process", return_value=True), \
+             patch("cli._socket_is_ready", return_value=False), \
+             patch("cli.terminate_verified_daemon", return_value=False), \
+             patch("cli.os.remove") as mock_remove:
+            self.assertFalse(cli._stop_daemon_locked())
+
+        mock_remove.assert_not_called()
+
+    def test_start_requires_a_responsive_socket(self):
+        import cli
+        from unittest.mock import MagicMock, patch
+
+        proc = MagicMock()
+        proc.pid = 4242
+        proc.poll.return_value = None
+
+        with tempfile.TemporaryDirectory() as runtime_dir:
+            log_path = os.path.join(runtime_dir, "daemon.log")
+            with patch.object(cli, "LOG_FILE", log_path), \
+                 patch("cli.is_running", return_value=False), \
+                 patch("cli.os.path.exists", return_value=False), \
+                 patch("cli.subprocess.Popen", return_value=proc), \
+                 patch("cli._write_pid_file"), \
+                 patch("cli.is_ytmusic_daemon_process", return_value=True), \
+                 patch("cli._socket_is_ready", return_value=False), \
+                 patch("cli._clean_failed_start") as mock_cleanup, \
+                 patch("cli.time.sleep"):
+                self.assertFalse(cli._start_daemon_locked(silent=True))
+
+        mock_cleanup.assert_called_once_with(proc)
 
     def test_termination_uses_pidfd_bound_to_the_verified_process(self):
         import cli
@@ -340,6 +377,7 @@ class TestProcessVerificationAndStalePidSecurity(unittest.TestCase):
             lock_path = os.path.join(runtime_dir, "daemon-start.lock")
             with patch.object(cli, "START_LOCK_FILE", lock_path), \
                  patch("cli.is_running", return_value=True) as mock_is_running, \
+                 patch("cli._socket_is_ready", return_value=True), \
                  patch("cli.subprocess.Popen") as mock_popen:
                 self.assertTrue(cli.start_daemon(silent=True))
 

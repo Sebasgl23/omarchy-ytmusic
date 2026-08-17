@@ -16,18 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core.paths import SOCKET_PATH, PID_FILE, START_LOCK_FILE, LOG_FILE, COOKIE_FILE
 
 
-def send_ipc(command: str, args: dict = None, timeout: float = 15.0) -> dict:
-    if not os.path.exists(SOCKET_PATH) or not is_running():
-        # Auto-spawn daemon if not already started (e.g. after fresh PC reboot)
-        start_daemon(silent=True)
-        for _ in range(30):
-            if os.path.exists(SOCKET_PATH):
-                break
-            time.sleep(0.1)
-
-    if not os.path.exists(SOCKET_PATH):
-        return {"status": "error", "error": "Daemon is not running. Start with 'omarchy-ytmusic start'"}
-
+def _request_ipc(command: str, args: dict = None, timeout: float = 15.0) -> dict:
     args = args or {}
     req = {"command": command, "args": args, "id": 1}
     payload = (json.dumps(req) + "\n").encode("utf-8")
@@ -50,6 +39,21 @@ def send_ipc(command: str, args: dict = None, timeout: float = 15.0) -> dict:
         return json.loads(buffer.decode("utf-8").strip())
     except Exception as ex:
         return {"status": "error", "error": str(ex)}
+
+
+def _socket_is_ready(timeout: float = 0.5) -> bool:
+    if not os.path.exists(SOCKET_PATH):
+        return False
+    response = _request_ipc("ping", timeout=timeout)
+    return response.get("status") == "ok" and response.get("data", {}).get("pong") is True
+
+
+def send_ipc(command: str, args: dict = None, timeout: float = 15.0) -> dict:
+    if not is_running() or not _socket_is_ready():
+        if not start_daemon(silent=True):
+            return {"status": "error", "error": "Daemon failed to start"}
+
+    return _request_ipc(command, args=args, timeout=timeout)
 
 
 def is_ytmusic_daemon_process(pid: int) -> bool:
@@ -223,10 +227,18 @@ def _clean_failed_start(proc: subprocess.Popen) -> None:
 
 
 def _start_daemon_locked(silent: bool = False) -> bool:
-    if is_running():
+    if is_running() and _socket_is_ready():
         if not silent:
             print("Daemon is already running.")
         return True
+
+    if os.path.exists(SOCKET_PATH):
+        try:
+            os.remove(SOCKET_PATH)
+        except OSError:
+            if not silent:
+                print(f"Cannot remove stale daemon socket: {SOCKET_PATH}")
+            return False
 
     daemon_dir = os.path.dirname(os.path.abspath(__file__))
     venv_python = sys.executable
@@ -249,7 +261,7 @@ def _start_daemon_locked(silent: bool = False) -> bool:
     _write_pid_file(proc.pid)
 
     for _ in range(30):
-        if os.path.exists(SOCKET_PATH):
+        if is_ytmusic_daemon_process(proc.pid) and _socket_is_ready():
             if not silent:
                 print(f"Daemon started successfully (PID {proc.pid}).")
             return True
@@ -277,51 +289,70 @@ def start_daemon(silent: bool = False) -> bool:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
-def stop_daemon():
-    if os.path.exists(PID_FILE):
-        pid = None
-        try:
-            with open(PID_FILE, "r") as f:
-                content = f.read().strip()
-                if content:
-                    pid = int(content)
-        except Exception:
-            pid = None
+def _remove_runtime_file(path: str) -> None:
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
 
-        if pid is not None and is_ytmusic_daemon_process(pid):
-            print(f"Stopping daemon (PID {pid})...")
-            # Attempt graceful socket shutdown first
-            if os.path.exists(SOCKET_PATH):
-                try:
-                    send_ipc("shutdown", timeout=2.0)
-                except Exception:
-                    pass
 
-            # Fallback to SIGTERM if process is still alive
-            try:
-                if terminate_verified_daemon(pid):
-                    for _ in range(20):
-                        if not is_ytmusic_daemon_process(pid):
-                            break
-                        time.sleep(0.1)
-            except Exception:
-                pass
-        elif pid is not None:
-            print(f"Stored PID ({pid}) does not belong to YT Music daemon (stale PID). Cleaned up safely.")
-
-        if os.path.exists(PID_FILE):
-            try:
-                os.remove(PID_FILE)
-            except OSError:
-                pass
-        if os.path.exists(SOCKET_PATH):
-            try:
-                os.remove(SOCKET_PATH)
-            except OSError:
-                pass
-        print("Stopped.")
-    else:
+def _stop_daemon_locked() -> bool:
+    if not os.path.exists(PID_FILE):
+        _remove_runtime_file(SOCKET_PATH)
         print("Daemon is not running.")
+        return True
+
+    try:
+        with open(PID_FILE, "r", encoding="utf-8") as pid_file:
+            pid = int(pid_file.read().strip())
+    except (OSError, ValueError):
+        _remove_runtime_file(PID_FILE)
+        _remove_runtime_file(SOCKET_PATH)
+        print("Removed invalid daemon runtime files.")
+        return True
+
+    if not is_ytmusic_daemon_process(pid):
+        _remove_runtime_file(PID_FILE)
+        _remove_runtime_file(SOCKET_PATH)
+        print(f"Stored PID ({pid}) is stale. Cleaned up safely.")
+        return True
+
+    print(f"Stopping daemon (PID {pid})...")
+    if _socket_is_ready():
+        _request_ipc("shutdown", timeout=2.0)
+        for _ in range(20):
+            if not is_ytmusic_daemon_process(pid):
+                break
+            time.sleep(0.1)
+
+    if is_ytmusic_daemon_process(pid):
+        terminate_verified_daemon(pid)
+        for _ in range(20):
+            if not is_ytmusic_daemon_process(pid):
+                break
+            time.sleep(0.1)
+
+    if is_ytmusic_daemon_process(pid):
+        print(f"Failed to stop daemon (PID {pid}); runtime files were preserved.")
+        return False
+
+    _remove_runtime_file(PID_FILE)
+    _remove_runtime_file(SOCKET_PATH)
+    print("Stopped.")
+    return True
+
+
+def stop_daemon() -> bool:
+    lock_fd = os.open(START_LOCK_FILE, os.O_RDWR | os.O_CREAT, 0o600)
+    with os.fdopen(lock_fd, "r+") as lock_file:
+        os.chmod(START_LOCK_FILE, 0o600)
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            return _stop_daemon_locked()
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def setup_auth():
