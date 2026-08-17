@@ -16,6 +16,7 @@ from core.models import Track, Playlist, PlaybackState
 from core.interfaces import MusicRepository, AudioPlayer
 from core.paths import SOCKET_PATH, RUNTIME_DIR
 from services.playback_orchestrator import PlaybackOrchestrator
+from services.mpv_player_service import MpvPlayerService
 from ipc.socket_server import IpcServer
 
 
@@ -142,6 +143,26 @@ class TestPlaybackOrchestrator(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(res)
         self.assertEqual(len(self.orchestrator.queue), 2)
         self.assertEqual(self.orchestrator.queue[1].video_id, "2")
+
+
+class TestMpvPlayerLifecycle(unittest.IsolatedAsyncioTestCase):
+    async def test_failed_start_terminates_spawned_mpv(self):
+        from unittest.mock import MagicMock, patch
+
+        process = MagicMock()
+        process.poll.return_value = None
+        process.wait.return_value = 0
+        player = MpvPlayerService(socket_path="/nonexistent/mpv-test.sock")
+
+        with patch("services.mpv_player_service.subprocess.Popen", return_value=process), \
+             patch("services.mpv_player_service.os.path.exists", return_value=False), \
+             patch("services.mpv_player_service.asyncio.sleep", new=AsyncMock()):
+            with self.assertRaises(RuntimeError):
+                await player.start()
+
+        process.terminate.assert_called_once_with()
+        process.wait.assert_called_once_with(timeout=2)
+        self.assertIsNone(player._process)
 
 
 class TestIpcServer(unittest.IsolatedAsyncioTestCase):

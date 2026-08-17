@@ -75,28 +75,34 @@ class MpvPlayerService(AudioPlayer):
             stderr=subprocess.DEVNULL,
         )
 
-        # Wait for socket creation
-        for _ in range(30):
-            if os.path.exists(self.socket_path):
-                break
-            await asyncio.sleep(0.1)
+        try:
+            # Wait for socket creation
+            for _ in range(30):
+                if os.path.exists(self.socket_path):
+                    break
+                if self._process.poll() is not None:
+                    raise RuntimeError("MPV exited before creating its IPC socket.")
+                await asyncio.sleep(0.1)
 
-        if not os.path.exists(self.socket_path):
-            raise RuntimeError(f"MPV IPC socket {self.socket_path} failed to initialize.")
+            if not os.path.exists(self.socket_path):
+                raise RuntimeError(f"MPV IPC socket {self.socket_path} failed to initialize.")
 
-        self._reader, self._writer = await asyncio.open_unix_connection(self.socket_path)
-        self._running = True
-        self._listen_task = asyncio.create_task(self._listen_mpv_events())
+            self._reader, self._writer = await asyncio.open_unix_connection(self.socket_path)
+            self._running = True
+            self._listen_task = asyncio.create_task(self._listen_mpv_events())
 
-        # Observe properties
-        await self._send_command(["observe_property", 1, "time-pos"])
-        await self._send_command(["observe_property", 2, "pause"])
-        await self._send_command(["observe_property", 3, "idle-active"])
-        await self._send_command(["observe_property", 4, "eof-reached"])
-        await self._send_command(["observe_property", 5, "duration"])
-        await self._send_command(["observe_property", 6, "volume"])
-        await self._send_command(["observe_property", 7, "mute"])
-        logger.info("Connected to MPV IPC socket successfully.")
+            # Observe properties
+            await self._send_command(["observe_property", 1, "time-pos"])
+            await self._send_command(["observe_property", 2, "pause"])
+            await self._send_command(["observe_property", 3, "idle-active"])
+            await self._send_command(["observe_property", 4, "eof-reached"])
+            await self._send_command(["observe_property", 5, "duration"])
+            await self._send_command(["observe_property", 6, "volume"])
+            await self._send_command(["observe_property", 7, "mute"])
+            logger.info("Connected to MPV IPC socket successfully.")
+        except Exception:
+            await self.stop()
+            raise
 
     async def stop(self) -> None:
         """Gracefully stop MPV and close socket connections."""
@@ -112,6 +118,8 @@ class MpvPlayerService(AudioPlayer):
                 self._process.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 self._process.kill()
+                self._process.wait(timeout=2)
+            self._process = None
         if os.path.exists(self.socket_path):
             try:
                 os.remove(self.socket_path)

@@ -41,30 +41,37 @@ async def main():
         stop_event.set()
 
     ipc = IpcServer(repo, player, orchestrator, on_shutdown=_shutdown_handler)
-
-    # Start services
-    await player.start()
-    await ipc.start()
-
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, _shutdown_handler)
-        except NotImplementedError:
-            pass
-
-    logger.info("YouTube Music Daemon running successfully.")
+    player_started = False
+    ipc_started = False
     try:
+        await player.start()
+        player_started = True
+        await ipc.start()
+        ipc_started = True
+
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, _shutdown_handler)
+            except NotImplementedError:
+                pass
+
+        logger.info("YouTube Music Daemon running successfully.")
         await stop_event.wait()
     finally:
         logger.info("Stopping services...")
-        await ipc.stop()
-        await player.stop()
-        if os.path.exists(PID_FILE):
-            try:
+        if ipc_started:
+            await ipc.stop()
+        if player_started:
+            await player.stop()
+
+        try:
+            with open(PID_FILE, "r", encoding="utf-8") as pid_file:
+                recorded_pid = int(pid_file.read().strip())
+            if recorded_pid == os.getpid():
                 os.remove(PID_FILE)
-            except OSError:
-                pass
+        except (OSError, ValueError):
+            pass
         logger.info("Daemon cleanly terminated.")
 
 
