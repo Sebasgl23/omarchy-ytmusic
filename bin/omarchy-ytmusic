@@ -13,16 +13,44 @@ PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-ytmusic"
 VENV_DIR="$STATE_DIR/venv"
 VENV_PYTHON="$VENV_DIR/bin/python3"
+REQUIREMENTS_FILE="$PLUGIN_DIR/requirements.txt"
+REQUIREMENTS_STAMP="$VENV_DIR/.requirements.sha256"
+BOOTSTRAP_LOCK="$STATE_DIR/bootstrap.lock"
 
-# Auto-bootstrap python virtual environment on first run if missing or incomplete
-if [ ! -f "$VENV_PYTHON" ] || ! "$VENV_PYTHON" -c "import ytmusicapi, yt_dlp, requests" >/dev/null 2>&1; then
-  echo "Setting up YouTube Music daemon environment for first run..." >&2
-  mkdir -p "$STATE_DIR"
-  if [ ! -f "$VENV_PYTHON" ]; then
-    python3 -m venv "$VENV_DIR" || { echo "Failed to create virtualenv. Please install python3-venv." >&2; exit 1; }
+# Keep first-run setup private and serialize concurrent bar/CLI invocations.
+mkdir -p "$STATE_DIR"
+chmod 700 "$STATE_DIR"
+REQUIREMENTS_HASH="$(sha256sum "$REQUIREMENTS_FILE" | cut -d ' ' -f 1)"
+
+needs_bootstrap() {
+  [ ! -x "$VENV_PYTHON" ] ||
+    [ ! -f "$REQUIREMENTS_STAMP" ] ||
+    [ "$(<"$REQUIREMENTS_STAMP")" != "$REQUIREMENTS_HASH" ] ||
+    ! "$VENV_PYTHON" -c "import ytmusicapi, yt_dlp, requests" >/dev/null 2>&1
+}
+
+if needs_bootstrap; then
+  exec 9>"$BOOTSTRAP_LOCK"
+  chmod 600 "$BOOTSTRAP_LOCK"
+  flock 9
+
+  # Another invocation may have completed setup while this one waited.
+  if needs_bootstrap; then
+    echo "Setting up YouTube Music daemon environment..." >&2
+    if [ ! -x "$VENV_PYTHON" ]; then
+      python3 -m venv "$VENV_DIR" || { echo "Failed to create virtualenv. Please install python3-venv." >&2; exit 1; }
+    fi
+    "$VENV_PYTHON" -m pip install --disable-pip-version-check --quiet --requirement "$REQUIREMENTS_FILE" || {
+      echo "Failed to install pinned dependencies." >&2
+      exit 1
+    }
+    printf '%s\n' "$REQUIREMENTS_HASH" >"$REQUIREMENTS_STAMP"
+    chmod 600 "$REQUIREMENTS_STAMP"
+    echo "Setup completed successfully." >&2
   fi
-  "$VENV_DIR/bin/pip" install --quiet ytmusicapi yt-dlp requests || { echo "Failed to install dependencies." >&2; exit 1; }
-  echo "Setup completed successfully." >&2
+
+  flock -u 9
+  exec 9>&-
 fi
 
 exec "$VENV_PYTHON" "$PLUGIN_DIR/daemon/cli.py" "$@"

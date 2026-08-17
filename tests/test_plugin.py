@@ -333,6 +333,26 @@ class TestPluginPortability(unittest.TestCase):
                 self.assertIn('Qt.resolvedUrl("bin/omarchy-ytmusic")', source)
                 self.assertNotRegex(source, r"/home/[^/]+/")
 
+    def test_bootstrap_uses_only_pinned_dependencies_under_a_lock(self):
+        plugin_root = os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
+        requirements_path = os.path.join(plugin_root, "requirements.txt")
+        wrapper_path = os.path.join(plugin_root, "bin", "omarchy-ytmusic")
+
+        with open(requirements_path, encoding="utf-8") as requirements_file:
+            requirements = [
+                line.strip()
+                for line in requirements_file
+                if line.strip() and not line.startswith("#")
+            ]
+        with open(wrapper_path, encoding="utf-8") as wrapper_file:
+            wrapper = wrapper_file.read()
+
+        self.assertTrue(requirements)
+        self.assertTrue(all(line.count("==") == 1 for line in requirements))
+        self.assertIn('flock 9', wrapper)
+        self.assertIn('--requirement "$REQUIREMENTS_FILE"', wrapper)
+        self.assertNotIn("pip install --quiet ytmusicapi yt-dlp requests", wrapper)
+
 
 if __name__ == "__main__":
     unittest.main()

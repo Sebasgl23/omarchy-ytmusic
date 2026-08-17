@@ -49,7 +49,7 @@ Optionally, add the widget to your bar's right section:
 omarchy bar move sebasgl23.ytmusic --section right
 ```
 
-> **Note:** On first launch, the plugin automatically bootstraps its isolated Python virtual environment inside `~/.local/state/omarchy-ytmusic/venv/` and sets up the required dependencies (`ytmusicapi`, `yt-dlp`, `requests`). No manual `pip` installation or root privileges required!
+> **Note:** On first launch, the plugin automatically bootstraps its isolated Python virtual environment inside `~/.local/state/omarchy-ytmusic/venv/` and installs the versions pinned in `requirements.txt`. Setup is serialized to prevent concurrent bar and CLI invocations from corrupting the environment. No manual `pip` installation or root privileges are required.
 
 ### Updating the Plugin
 
