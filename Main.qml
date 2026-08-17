@@ -6,7 +6,10 @@ Item {
   id: root
   visible: false
 
-  readonly property string cliBin: "/home/sguardol/.config/omarchy/plugins/sguardol.ytmusic/bin/omarchy-ytmusic"
+  readonly property string cliBin: {
+    var url = Qt.resolvedUrl("bin/omarchy-ytmusic").toString()
+    return url.startsWith("file://") ? url.substring(7) : (Quickshell.env("HOME") + "/.config/omarchy/plugins/sebasgl23.ytmusic/bin/omarchy-ytmusic")
+  }
 
   property bool   isPlaying:        false
   property string trackTitle:       "No track playing"

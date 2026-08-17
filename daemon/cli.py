@@ -73,18 +73,35 @@ def is_ytmusic_daemon_process(pid: int) -> bool:
         if not args:
             return False
 
-        # Compute the canonical absolute path to our daemon entrypoint (daemon/main.py)
+        # 1. Ensure the executing binary is Python
+        exe_name = os.path.basename(os.path.realpath(args[0])).lower()
+        if not exe_name.startswith("python"):
+            return False
+
+        # 2. Find the script argument passed to Python (first non-flag argument after python executable)
         current_dir = os.path.dirname(os.path.abspath(__file__))
         expected_main = os.path.realpath(os.path.join(current_dir, "main.py"))
 
-        for arg in args:
-            try:
-                if os.path.realpath(arg) == expected_main:
-                    return True
-            except Exception:
+        script_arg = None
+        i = 1
+        while i < len(args):
+            arg = args[i]
+            if arg in ("-c", "-m"):
+                # Running a raw command string or module, not our script file
+                return False
+            if arg in ("-W", "-X", "--check-hash-based-pycs"):
+                i += 2
                 continue
+            if arg.startswith("-"):
+                i += 1
+                continue
+            script_arg = arg
+            break
 
-        return False
+        if not script_arg:
+            return False
+
+        return os.path.realpath(script_arg) == expected_main
     except (OSError, PermissionError):
         # Fail-closed if unable to read process details
         return False

@@ -15,7 +15,10 @@ Panel {
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.55)
 
-  readonly property string cliBin: "/home/sguardol/.config/omarchy/plugins/sebasgl23.ytmusic/bin/omarchy-ytmusic"
+  readonly property string cliBin: {
+    var url = Qt.resolvedUrl("bin/omarchy-ytmusic").toString()
+    return url.startsWith("file://") ? url.substring(7) : (Quickshell.env("HOME") + "/.config/omarchy/plugins/sebasgl23.ytmusic/bin/omarchy-ytmusic")
+  }
 
   // ── Playback state ────────────────────────────────────────────────────────
   property bool   isPlaying:       false

@@ -13,7 +13,10 @@ BarWidget {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   // CLI Binary
-  property string cliBin: Quickshell.env("HOME") + "/.config/omarchy/plugins/sebasgl23.ytmusic/bin/omarchy-ytmusic"
+  property string cliBin: {
+    var url = Qt.resolvedUrl("bin/omarchy-ytmusic").toString()
+    return url.startsWith("file://") ? url.substring(7) : (Quickshell.env("HOME") + "/.config/omarchy/plugins/sebasgl23.ytmusic/bin/omarchy-ytmusic")
+  }
 
   // Current State
   property var playerState: ({

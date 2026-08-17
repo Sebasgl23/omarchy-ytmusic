@@ -236,7 +236,21 @@ class TestProcessVerificationAndStalePidSecurity(unittest.TestCase):
              patch("builtins.open", mock_open(read_data=b"nano\x00/other/project/daemon/main.py\x00sebasgl23.ytmusic\x00")):
             self.assertFalse(is_ytmusic_daemon_process(12345))
 
-        # Case 5: Fail-closed when /proc/<pid>/cmdline does not exist
+        # Case 5: Python is running an editor/tool and our daemon path is only
+        # a later argument. It must never be treated as the daemon process.
+        with patch("os.kill", return_value=None), \
+             patch("os.path.exists", return_value=True), \
+             patch(
+                 "builtins.open",
+                 mock_open(
+                     read_data=(
+                         f"python3\x00/usr/bin/some-editor.py\x00{daemon_main}\x00"
+                     ).encode("utf-8")
+                 ),
+             ):
+            self.assertFalse(is_ytmusic_daemon_process(12345))
+
+        # Case 6: Fail-closed when /proc/<pid>/cmdline does not exist
         with patch("os.kill", return_value=None), \
              patch("os.path.exists", return_value=False):
             self.assertFalse(is_ytmusic_daemon_process(12345))
@@ -260,6 +274,20 @@ class TestProcessVerificationAndStalePidSecurity(unittest.TestCase):
             self.assertTrue(any("daemon.pid" in str(c) for c in mock_remove.call_args_list))
 
 
+class TestPluginPortability(unittest.TestCase):
+    """Ensure marketplace entry points do not depend on the author's home."""
+
+    def test_qml_cli_paths_are_resolved_relative_to_the_plugin(self):
+        plugin_root = os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
+
+        for qml_name in ("Panel.qml", "Main.qml", "BarWidget.qml"):
+            with self.subTest(qml=qml_name):
+                with open(os.path.join(plugin_root, qml_name), encoding="utf-8") as qml_file:
+                    source = qml_file.read()
+
+                self.assertIn('Qt.resolvedUrl("bin/omarchy-ytmusic")', source)
+                self.assertNotRegex(source, r"/home/[^/]+/")
+
+
 if __name__ == "__main__":
     unittest.main()
-
