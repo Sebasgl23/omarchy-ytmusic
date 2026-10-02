@@ -4,11 +4,13 @@ import asyncio
 import json
 import logging
 import os
+import re
 import subprocess
+import urllib.request
 from typing import Optional, Callable
 from core.models import Track, PlaybackState
 from core.interfaces import AudioPlayer
-from core.paths import MPV_SOCKET_PATH, COOKIE_FILE
+from core.paths import MPV_SOCKET_PATH, COOKIE_FILE, RUNTIME_DIR
 
 logger = logging.getLogger("mpv_player")
 
@@ -190,6 +192,34 @@ class MpvPlayerService(AudioPlayer):
             except Exception as ex:
                 logger.error("Error in on_eof_callback: %s", ex)
 
+    def _ensure_local_thumbnail(self, track: Track) -> Optional[str]:
+        """Download and cache the track thumbnail so MPRIS can expose it as cover art."""
+        url = track.thumbnail_url
+        if not url or not track.video_id:
+            return None
+
+        safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", track.video_id)
+        art_dir = RUNTIME_DIR / "art"
+        art_path = art_dir / f"{safe_id}.jpg"
+        try:
+            if art_path.exists() and art_path.stat().st_size > 0:
+                return str(art_path)
+
+            art_dir.mkdir(parents=True, exist_ok=True)
+            request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(request, timeout=5) as response:
+                data = response.read(2_000_000)
+            if not data:
+                return None
+
+            tmp_path = art_path.with_name(f".{art_path.name}.tmp")
+            tmp_path.write_bytes(data)
+            os.replace(tmp_path, art_path)
+            return str(art_path)
+        except Exception as ex:
+            logger.debug("Could not cache thumbnail for %s: %s", track.video_id, ex)
+            return None
+
     async def play_url(self, stream_url: str, track: Track) -> None:
         """Load and start playing audio stream."""
         self._state.current_track = track
@@ -203,7 +233,17 @@ class MpvPlayerService(AudioPlayer):
         else:
             media_title = title or artist or "YouTube Music"
 
-        await self._send_command(["loadfile", stream_url, "replace"])
+        art_path = await asyncio.get_running_loop().run_in_executor(
+            None, self._ensure_local_thumbnail, track
+        )
+
+        if art_path:
+            # Per-file cover art (index -1 required to pass the options map) so mpv-mpris reports it.
+            await self._send_command(
+                ["loadfile", stream_url, "replace", -1, {"cover-art-files": art_path}]
+            )
+        else:
+            await self._send_command(["loadfile", stream_url, "replace"])
         await self._send_command(["set_property", "force-media-title", media_title])
         await self._send_command(["set_property", "title", title])
         await self._send_command(["set_property", "pause", False])

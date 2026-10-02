@@ -4,7 +4,8 @@ import asyncio
 import json
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import sys
 import os
@@ -164,6 +165,79 @@ class TestMpvPlayerLifecycle(unittest.IsolatedAsyncioTestCase):
         process.terminate.assert_called_once_with()
         process.wait.assert_called_once_with(timeout=2)
         self.assertIsNone(player._process)
+
+
+class TestMpvThumbnailArt(unittest.IsolatedAsyncioTestCase):
+    """Cover art must be cached locally for mpv-mpris to expose via mpris:artUrl."""
+
+    @staticmethod
+    def _urlopen_returning(payload):
+        class _Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self, _size=-1):
+                return payload
+
+        return MagicMock(return_value=_Response())
+
+    def test_ensure_local_thumbnail_caches_and_sanitizes_id(self):
+        import services.mpv_player_service as mpv_service
+
+        player = MpvPlayerService(socket_path="/nonexistent/mpv-test.sock")
+        track = Track(
+            video_id="a/b",
+            title="Song",
+            artist="Artist",
+            thumbnail_url="https://img.example/cover.jpg",
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            urlopen = self._urlopen_returning(b"JPEGDATA")
+            with patch.object(mpv_service, "RUNTIME_DIR", Path(temp_dir)), \
+                 patch.object(mpv_service.urllib.request, "urlopen", urlopen):
+                first = player._ensure_local_thumbnail(track)
+                second = player._ensure_local_thumbnail(track)
+
+        self.assertIsNotNone(first)
+        self.assertEqual(os.path.basename(first), "a_b.jpg")
+        self.assertEqual(Path(first).parent, Path(temp_dir) / "art")
+        self.assertEqual(first, second)
+        urlopen.assert_called_once()
+
+    def test_ensure_local_thumbnail_returns_none_without_url(self):
+        player = MpvPlayerService(socket_path="/nonexistent/mpv-test.sock")
+        track = Track(video_id="abc", title="Song", artist="Artist")
+        self.assertIsNone(player._ensure_local_thumbnail(track))
+
+    async def test_play_url_attaches_cover_art_option(self):
+        player = MpvPlayerService(socket_path="/nonexistent/mpv-test.sock")
+        player._send_command = AsyncMock()
+        track = Track(video_id="abc", title="Song", artist="Artist", thumbnail_url="https://img/x.jpg")
+
+        with patch.object(player, "_ensure_local_thumbnail", return_value="/run/art/abc.jpg"):
+            await player.play_url("https://stream.googlevideo.com/audio", track)
+
+        commands = [call.args[0] for call in player._send_command.await_args_list]
+        self.assertIn(
+            ["loadfile", "https://stream.googlevideo.com/audio", "replace", -1,
+             {"cover-art-files": "/run/art/abc.jpg"}],
+            commands,
+        )
+
+    async def test_play_url_falls_back_without_art(self):
+        player = MpvPlayerService(socket_path="/nonexistent/mpv-test.sock")
+        player._send_command = AsyncMock()
+        track = Track(video_id="abc", title="Song", artist="Artist", thumbnail_url="https://img/x.jpg")
+
+        with patch.object(player, "_ensure_local_thumbnail", return_value=None):
+            await player.play_url("https://stream.googlevideo.com/audio", track)
+
+        commands = [call.args[0] for call in player._send_command.await_args_list]
+        self.assertIn(["loadfile", "https://stream.googlevideo.com/audio", "replace"], commands)
 
 
 class TestIpcServer(unittest.IsolatedAsyncioTestCase):
