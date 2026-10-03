@@ -138,6 +138,15 @@ class MpvPlayerService(AudioPlayer):
             await self._writer.drain()
         except Exception as ex:
             logger.error("Failed sending command %s to MPV: %s", command, ex)
+            self._mark_mpv_gone()
+
+    def _mark_mpv_gone(self) -> None:
+        """MPV died or dropped the socket; stop reporting stale playback state."""
+        self._writer = None
+        self._reader = None
+        self._process = None
+        self._running = False
+        self._state.status = "stopped"
 
     async def _listen_mpv_events(self) -> None:
         """Handle incoming property events from MPV."""
@@ -145,6 +154,9 @@ class MpvPlayerService(AudioPlayer):
             try:
                 line = await self._reader.readline()
                 if not line:
+                    logger.warning("MPV closed the IPC connection.")
+                    if self._running:
+                        self._mark_mpv_gone()
                     break
                 event = json.loads(line.decode("utf-8"))
                 self._handle_event(event)
@@ -192,6 +204,12 @@ class MpvPlayerService(AudioPlayer):
 
     async def play_url(self, stream_url: str, track: Track) -> None:
         """Load and start playing audio stream."""
+        # Self-heal: MPV may have died since we started (crash, external kill);
+        # respawn it rather than writing to a dead socket and staying silent.
+        if not self._running or not self._writer:
+            logger.info("MPV is not running; starting it before playback.")
+            await self.start()
+
         self._state.current_track = track
         self._state.status = "playing"
         self._state.position_seconds = 0.0

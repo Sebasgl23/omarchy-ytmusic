@@ -165,6 +165,30 @@ class TestMpvPlayerLifecycle(unittest.IsolatedAsyncioTestCase):
         process.wait.assert_called_once_with(timeout=2)
         self.assertIsNone(player._process)
 
+    async def test_send_command_marks_stopped_when_connection_lost(self):
+        player = MpvPlayerService(socket_path="/nonexistent/mpv-test.sock")
+        player._state.status = "playing"
+        writer = MagicMock()
+        writer.write.side_effect = ConnectionResetError("Connection lost")
+        player._writer = writer
+
+        await player._send_command(["loadfile", "https://stream", "replace"])
+
+        self.assertEqual(player._state.status, "stopped")
+        self.assertIsNone(player._writer)
+
+    async def test_play_url_restarts_mpv_when_not_running(self):
+        player = MpvPlayerService(socket_path="/nonexistent/mpv-test.sock")
+        player._running = False
+        player._writer = None
+        player._send_command = AsyncMock()
+        player.start = AsyncMock()
+        track = Track(video_id="abc", title="Song", artist="Artist", duration_seconds=100)
+
+        await player.play_url("https://stream.googlevideo.com/audio", track)
+
+        player.start.assert_awaited_once()
+
 
 class TestIpcServer(unittest.IsolatedAsyncioTestCase):
     """Test JSON-RPC message dispatching and response structures."""
