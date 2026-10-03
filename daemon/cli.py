@@ -13,8 +13,8 @@ import time
 
 # Ensure daemon directory is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core.paths import SOCKET_PATH, PID_FILE, START_LOCK_FILE, LOG_FILE, COOKIE_FILE
-from core.files import atomic_write_private_json
+from core.paths import SOCKET_PATH, PID_FILE, START_LOCK_FILE, LOG_FILE, COOKIE_FILE, AUTH_FILE
+from core.files import atomic_write_private_json, migrate_private_file
 
 
 def _request_ipc(command: str, args: dict = None, timeout: float = 15.0) -> dict:
@@ -358,7 +358,8 @@ def stop_daemon() -> bool:
 
 def setup_auth():
     plugin_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    auth_file = os.path.join(plugin_dir, "auth.json")
+    migrate_private_file(os.path.join(plugin_dir, "auth.json"), AUTH_FILE)
+    auth_file = AUTH_FILE
     daemon_dir = os.path.dirname(os.path.abspath(__file__))
     ytmusicapi_bin = os.path.join(daemon_dir, "venv", "bin", "ytmusicapi")
 

@@ -13,7 +13,8 @@ from services.ytmusic_service import YtMusicService
 from services.mpv_player_service import MpvPlayerService
 from services.playback_orchestrator import PlaybackOrchestrator
 from ipc.socket_server import IpcServer
-from core.paths import PID_FILE
+from core.paths import PID_FILE, AUTH_FILE
+from core.files import migrate_private_file
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,10 +28,14 @@ logger = logging.getLogger("ytmusic_daemon")
 
 async def main():
     plugin_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    auth_file = os.path.join(plugin_dir, "auth.json")
+    # Credentials live in the persistent state dir, never in the plugin tree,
+    # which the Omarchy shell watches and reloads on change. Migrate any legacy
+    # file left in the plugin directory so existing logins survive.
+    migrate_private_file(os.path.join(plugin_dir, "auth.json"), AUTH_FILE)
+    auth_file = AUTH_FILE if os.path.exists(AUTH_FILE) else None
 
     logger.info("Initializing Omarchy YouTube Music Daemon...")
-    repo = YtMusicService(auth_file_path=auth_file if os.path.exists(auth_file) else None)
+    repo = YtMusicService(auth_file_path=auth_file)
     player = MpvPlayerService()
     orchestrator = PlaybackOrchestrator(repo, player)
 

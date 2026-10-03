@@ -2,8 +2,33 @@
 
 import json
 import os
+import shutil
 import tempfile
 from typing import Any
+
+
+def migrate_private_file(legacy_path: str, target_path: str) -> None:
+    """
+    Move a legacy private file into its new location once.
+
+    Credentials used to live in the plugin directory, which the Omarchy shell
+    watches and reloads on any change; token refreshes there restarted the
+    shell. Relocate an existing file so users keep their login.
+    """
+    if os.path.exists(target_path) or not os.path.exists(legacy_path):
+        return
+    directory = os.path.dirname(target_path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    try:
+        os.replace(legacy_path, target_path)
+    except OSError:
+        shutil.move(legacy_path, target_path)
+    try:
+        os.chmod(target_path, 0o600)
+    except OSError:
+        pass
+
 
 
 def atomic_write_private_json(path: str, data: Any) -> None:

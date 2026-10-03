@@ -232,12 +232,45 @@ class TestPrivateFilePersistence(unittest.TestCase):
                 auth_file.write("old")
             os.chmod(auth_path, 0o644)
 
-            atomic_write_private_json(auth_path, {"refresh_token": "secret"})
+            atomic_write_private_json(auth_path, {"refresh_token":"secret"})
 
             with open(auth_path, encoding="utf-8") as auth_file:
-                self.assertEqual(json.load(auth_file), {"refresh_token": "secret"})
+                self.assertEqual(json.load(auth_file), {"refresh_token":"secret"})
             self.assertEqual(os.stat(auth_path).st_mode & 0o777, 0o600)
             self.assertEqual(os.listdir(temp_dir), ["auth.json"])
+
+    def test_migrate_private_file_moves_legacy_credentials(self):
+        from core.files import migrate_private_file
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            legacy = os.path.join(temp_dir, "plugin", "auth.json")
+            target = os.path.join(temp_dir, "state", "auth.json")
+            os.makedirs(os.path.dirname(legacy))
+            with open(legacy, "w", encoding="utf-8") as handle:
+                handle.write('{"refresh_token": "secret"}')
+
+            migrate_private_file(legacy, target)
+
+            self.assertFalse(os.path.exists(legacy))
+            self.assertTrue(os.path.exists(target))
+            self.assertEqual(os.stat(target).st_mode & 0o777, 0o600)
+            with open(target, encoding="utf-8") as handle:
+                self.assertEqual(json.load(handle), {"refresh_token": "secret"})
+
+    def test_migrate_private_file_does_not_overwrite_existing(self):
+        from core.files import migrate_private_file
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            legacy = os.path.join(temp_dir, "legacy.json")
+            target = os.path.join(temp_dir, "target.json")
+            for path, token in ((legacy, "legacy"), (target, "current")):
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(token)
+
+            migrate_private_file(legacy, target)
+
+            with open(target, encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "current")
 
 
 class TestRuntimeSecurityPaths(unittest.TestCase):
@@ -263,6 +296,17 @@ class TestRuntimeSecurityPaths(unittest.TestCase):
                 str(RUNTIME_DIR) in path,
                 f"Path {path} should reside inside RUNTIME_DIR ({RUNTIME_DIR})",
             )
+
+    def test_auth_file_is_persistent_and_outside_plugin_tree(self):
+        from core.paths import AUTH_FILE, STATE_DIR
+
+        # Credentials are rewritten on token refresh; they must not live in the
+        # plugin directory, which the Omarchy shell watches and reloads on change.
+        self.assertTrue(AUTH_FILE.startswith(str(STATE_DIR)))
+        self.assertFalse(AUTH_FILE.startswith("/tmp/"))
+        self.assertNotIn("plugins", AUTH_FILE.split(os.sep))
+        self.assertEqual(os.path.dirname(AUTH_FILE), str(STATE_DIR))
+        self.assertEqual(os.stat(STATE_DIR).st_mode & 0o777, 0o700)
 
 
 class TestProcessVerificationAndStalePidSecurity(unittest.TestCase):
