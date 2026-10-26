@@ -40,6 +40,12 @@ if needs_bootstrap; then
     if [ ! -x "$VENV_PYTHON" ]; then
       python3 -m venv "$VENV_DIR" || { echo "Failed to create virtualenv. Please install python3-venv." >&2; exit 1; }
     fi
+    if ! "$VENV_PYTHON" -m pip --version >/dev/null 2>&1; then
+      "$VENV_PYTHON" -m ensurepip --upgrade || {
+        echo "Failed to restore pip in the plugin virtualenv." >&2
+        exit 1
+      }
+    fi
     "$VENV_PYTHON" -m pip install --disable-pip-version-check --quiet --requirement "$REQUIREMENTS_FILE" || {
       echo "Failed to install pinned dependencies." >&2
       exit 1
